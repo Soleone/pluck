@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/Soleone/pluck/compare/v0.1.3...v0.1.4) (2026-11-05)
+
+### Features
+
+* color the icon in Gilt's jade green instead of red ([90a1f45](https://github.com/Soleone/pluck/commit/90a1f4543230ab427f8aa8367705cb733fa58e01))
+* Home and Agents reopen where they were left, and Home starts big enough for all of Settings ([ca43198](https://github.com/Soleone/pluck/commit/ca43198337e58db991b3b595f777ca9741b9da94))
+* pick a theme from Home, next to Agents, and every open window follows it ([5b5b0f9](https://github.com/Soleone/pluck/commit/5b5b0f9658eef851bdd767e16484ad6a7755a365))
+
 ## [0.1.3](https://github.com/Soleone/pluck/compare/v0.1.2...v0.1.3) (2026-11-05)
 
 ### Bug Fixes
