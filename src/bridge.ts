@@ -224,6 +224,10 @@ const sample: Opened = {
   lastSession: null,
 };
 
+/** How the menu hands its text to an agent, after the action's prompt or the question. */
+const promptFor = (instruction: string) =>
+  `${instruction}\n\nText from ${sample.app} (${sample.title}) at ${sample.url}:\n\n<text>\n${sample.text}\n</text>`;
+
 const cannedLines = [
   "Wittgenstein's line from the Tractatus: ",
   "the limits of my language mean the limits of my world.\n",
@@ -290,6 +294,9 @@ const catalog: AgentCatalog = {
   start: { model: "anthropic/claude-sonnet-5-5", thinking: "medium" },
 };
 
+/** The browser build switches to its Agents view when the menu hands a prompt over. */
+export const SHOW_AGENTS_EVENT = "pluck:show-agents";
+
 /** `pnpm dev:web`: sample text and actions, canned output, and the menu reopens after closing. */
 function prototype(): Bridge {
   let hotkey = "Ctrl+Alt+Space";
@@ -309,8 +316,15 @@ function prototype(): Bridge {
   let openListener: ((opened: Opened) => void) | undefined;
   let runListener: ((event: RunEvent) => void) | undefined;
   let agentListener: ((event: AgentEvent) => void) | undefined;
+  // Agents only listens while its view is shown, so the request waits for it.
+  let pendingRequest: AgentRequest | undefined;
   const dismiss = async () =>
     void setTimeout(() => openListener?.({ ...sample, lastSession: sessions[0] ?? null }), 500);
+  const handOff = (title: string, prompt: string, continueSession: boolean) => {
+    const session = continueSession ? (sessions[0]?.id ?? null) : null;
+    pendingRequest = { title, prompt: promptFor(prompt), session, ...sessionDefaults };
+    window.dispatchEvent(new Event(SHOW_AGENTS_EVENT));
+  };
   const reply = (id: string, records: PiRecord[]) =>
     records.forEach((record, index) =>
       setTimeout(() => agentListener?.({ id, record, exited: null }), 250 * (index + 1)),
@@ -326,24 +340,25 @@ function prototype(): Bridge {
       runListener = listener;
       return () => (runListener = undefined);
     },
-    async run(actionId, run) {
+    async run(actionId, run, continueSession) {
       const action = sample.actions.find((candidate) => candidate.id === actionId);
       const output = action?.output;
+      if (action?.agent && output === "session")
+        return handOff(sample.text, action.agent, continueSession);
       if (output === "replace")
         return void setTimeout(
           () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
           300,
         );
       if (output !== "show") return dismiss();
-      const events = [
-        ...cannedLines.map((line) => ({ line, done: false })),
-        { line: null, done: true },
-      ];
+      const lines =
+        actionId === "count" ? [`${sample.text.split(/\s+/).length} words\n`] : cannedLines;
+      const events = [...lines.map((line) => ({ line, done: false })), { line: null, done: true }];
       events.forEach((event, index) =>
         setTimeout(() => runListener?.({ run, error: null, ...event }), 300 * (index + 1)),
       );
     },
-    ask: dismiss,
+    ask: async (question, continueSession) => handOff(question, question, continueSession),
     replace: dismiss,
     dismiss,
     homeState: async () => ({
@@ -421,9 +436,9 @@ function prototype(): Bridge {
       if (command.type === "get_messages") {
         const messages =
           id === "sample"
-            ? cannedRun(
-                `Explain this briefly.\n\nText from ${sample.app} (${sample.title}) at ${sample.url}:\n\n<text>\n${sample.text}\n</text>`,
-              ).flatMap((record) => (record.type === "message_end" ? [record.message] : []))
+            ? cannedRun(promptFor("Explain this briefly.")).flatMap((record) =>
+                record.type === "message_end" ? [record.message] : [],
+              )
             : [];
         reply(id, [
           { type: "response", command: "get_messages", success: true, data: { messages } },
@@ -434,8 +449,12 @@ function prototype(): Bridge {
       agentListener = listener;
       return () => (agentListener = undefined);
     },
-    onAgentRequest: () => () => {},
-    showAgents: async () => {},
+    onAgentRequest(listener) {
+      if (pendingRequest) listener(pendingRequest);
+      pendingRequest = undefined;
+      return () => {};
+    },
+    showAgents: async () => void window.dispatchEvent(new Event(SHOW_AGENTS_EVENT)),
   };
 }
 

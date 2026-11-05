@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Soleone/showcase/main/schema/showcase.schema.json",
+  "title": "pluck",
+  "pitch": "Select text in any app, press a hotkey, and send it to your own scripts or an AI agent from a small menu at the cursor.",
+  "description": "Actions are entries in one TOML file: a command that reads the text on stdin, or a prompt for an agent. Output streams into a panel, lands on the clipboard or replaces the selection. Agent sessions run on Pi.",
+  "kind": "desktop-app",
+  "stage": "product",
+  "year": 2026,
+  "tech": ["Rust", "Tauri", "TypeScript", "React"],
+  "repo": "https://github.com/Soleone/pluck",
+  "live": "https://pluck.soleone.xyz",
+  "media": {
+    "motion": "docs/media/demo.webp",
+    "capture": "pnpm media:capture"
+  },
+  "brand": {
+    "icon": "public/favicon.svg"
+  },
+  "demo": {
+    "strategy": "hosted",
+    "local": "pnpm dev:web",
+    "externals": [
+      {
+        "name": "Selected text in other apps",
+        "type": "app",
+        "seam": "the bridge in src/bridge.ts",
+        "standIn": "simulated",
+        "note": "The browser demo opens the menu on a sample quote instead of text you selected elsewhere."
+      },
+      {
+        "name": "Your action scripts",
+        "type": "app",
+        "seam": "the bridge in src/bridge.ts",
+        "standIn": "canned",
+        "note": "Scripts don't run in the browser; their output is canned."
+      },
+      {
+        "name": "Pi agent sessions",
+        "type": "model",
+        "seam": "the bridge in src/bridge.ts",
+        "standIn": "canned",
+        "note": "Agent replies are canned; nothing is sent to a model."
+      }
+    ]
+  }
+}
