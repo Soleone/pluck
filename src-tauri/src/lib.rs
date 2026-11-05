@@ -120,6 +120,7 @@ pub fn run() {
       pick_folder,
       pause_hotkey,
       open_config_folder,
+      open_url,
       edit_config,
       set_agent_settings,
       agent_models,
@@ -362,6 +363,15 @@ fn pause_hotkey(app: AppHandle) {
 #[tauri::command]
 fn open_config_folder(app: AppHandle) -> Result<(), String> {
   app.opener().open_path(config_dir(&app).to_string_lossy(), None::<&str>).map_err(|error| error.to_string())
+}
+
+/// Opens a link from a page in the default browser; the webview can't open windows of its own.
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+  if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("mailto:")) {
+    return Err(format!("Not a web link: {url}"));
+  }
+  app.opener().open_url(url, None::<&str>).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

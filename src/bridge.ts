@@ -99,6 +99,8 @@ type Bridge = {
   /** A folder for agent sessions, named as WSL names it when they run there; null when cancelled. */
   pickFolder(): Promise<string | null>;
   openConfigFolder(): Promise<void>;
+  /** Opens a web link in the default browser. */
+  openUrl(url: string): Promise<void>;
   editConfig(): Promise<void>;
   /** A newer release, or null when current, offline or a development build. */
   availableUpdate(): Promise<Update | null>;
@@ -136,6 +138,7 @@ const native: Bridge = {
   setAutostart: (enabled) => invoke("set_autostart", { enabled }),
   pickFolder: () => invoke("pick_folder"),
   openConfigFolder: () => invoke("open_config_folder"),
+  openUrl: (url) => invoke("open_url", { url }),
   editConfig: () => invoke("edit_config"),
   async availableUpdate() {
     if (import.meta.env.DEV) return null;
@@ -347,6 +350,7 @@ function prototype(): Bridge {
     },
     pickFolder: async () => "/home/you/src",
     openConfigFolder: async () => {},
+    openUrl: async (url) => void window.open(url, "_blank", "noopener"),
     editConfig: async () => {},
     availableUpdate: async () => ({
       version: "0.2.0",
