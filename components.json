@@ -22,6 +22,7 @@
   "menuColor": "default",
   "menuAccent": "subtle",
   "registries": {
-    "@soleone": "https://raw.githubusercontent.com/Soleone/shadcn-components/main/public/r/{name}.json"
+    "@soleone": "https://raw.githubusercontent.com/Soleone/shadcn-components/main/public/r/{name}.json",
+    "@live": "https://raw.githubusercontent.com/Soleone/showcase-live-kit/main/public/r/{name}.json"
   }
 }

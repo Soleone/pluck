@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Agents } from "@/Agents";
 import { Home } from "@/Home";
 import { Popup } from "@/Popup";
 import { SHOW_AGENTS_EVENT } from "@/bridge";
-import { Button } from "@/components/ui/button";
+import { Corner, DownloadButton } from "@/components/live/corners";
 import { ThemePicker } from "@/components/soleone/theme-picker";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -77,16 +76,9 @@ function Prototype() {
           </div>
         )}
       </main>
-      <div className="fixed right-4 bottom-4 z-40 md:right-8 md:bottom-8">
-        <Button
-          size="lg"
-          nativeButton={false}
-          render={<a href={RELEASES_URL} target="_blank" rel="noreferrer" />}
-        >
-          <Download aria-hidden="true" />
-          Download the app
-        </Button>
-      </div>
+      <Corner side="right">
+        <DownloadButton href={RELEASES_URL} />
+      </Corner>
     </div>
   );
 }
