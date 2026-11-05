@@ -6,7 +6,7 @@
     "tagName": "v${version}",
     "tagAnnotation": "Pluck ${version}"
   },
-  "npm": { "publish": false },
+  "npm": { "publish": false, "versionArgs": ["--force"] },
   "github": { "release": false },
   "plugins": {
     "@release-it/conventional-changelog": {
