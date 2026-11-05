@@ -33,7 +33,8 @@ export default defineConfig({
   ]),
   resolve: { alias: { "@": resolve(import.meta.dirname, "./src") } },
   staged: { "*": "vp check --fix" },
-  fmt: { ignorePatterns: vendored },
+  // release-it writes the changelog in its own style on every release.
+  fmt: { ignorePatterns: [...vendored, "CHANGELOG.md"] },
   lint: {
     plugins: ["react", "typescript", "oxc", "unicorn"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }, "@shadcn/lint"],
