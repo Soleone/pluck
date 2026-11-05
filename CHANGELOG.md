@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.2](https://github.com/Soleone/pluck/compare/v0.1.1...v0.1.2) (2026-11-05)
+
+### Features
+
+* optionally grab the browser's URL when nothing is selected (Windows) ([4282d89](https://github.com/Soleone/pluck/commit/4282d89d8848ea8b5d98f72c243280ed14103298))
+* prompts choose an output like scripts: session, panel, replace, copy or notify ([9123032](https://github.com/Soleone/pluck/commit/91230322769cfca2de24d78b0e2c5caa3db2a99b))
+
+### Bug Fixes
+
+* **ci:** check files out with LF on Windows so the release's format check passes ([53ccbac](https://github.com/Soleone/pluck/commit/53ccbacc7d14a7f2c0284a4bbdf40ff28727caa6))
+* editing an action survives the window reloading the actions on focus ([8aebf72](https://github.com/Soleone/pluck/commit/8aebf72108f4410adfb76f06e727777590e4e4ab))
+* name the active window in agent prompts when the text came from the clipboard ([d7bdbbd](https://github.com/Soleone/pluck/commit/d7bdbbdbf6336f04c11ae4067a8424df2fbc064f))
+
 ## 0.1.1 (2026-11-05)
 
 ### Features
