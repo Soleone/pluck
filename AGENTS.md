@@ -1,6 +1,12 @@
 # pluck
 
-TODO: one paragraph on what this app is and who it is for.
+Pluck is a desktop app (Tauri) that sends text selected in any app to the user's own scripts through a small hotkey menu. Windows first, then macOS and Linux (Omarchy/Hyprland).
+
+## Running it
+
+- `pnpm dev:web` runs the UI in a browser with sample data. Use it for UI work.
+- `pnpm dev` runs the native app. It builds for the OS it runs on, so for Windows: run `win-sync` here (copies to `D:\src\wsl\pluck`, profile in `~/.config/win-sync/pluck.ignore`), then `pnpm install` and `pnpm dev` there in PowerShell.
+- WSL lacks the system libraries for a Linux build, so `cargo check` in `src-tauri` fails here.
 
 ## Where things are
 

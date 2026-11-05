@@ -1,0 +1,17 @@
+[package]
+name = "pluck"
+version = "0.1.0"
+description = "Send selected text from any app to your scripts"
+authors = ["Soleone"]
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "pluck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4" }
+
+[dependencies]
+tauri = { version = "2.12.5" }
