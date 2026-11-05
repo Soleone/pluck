@@ -345,7 +345,7 @@ function prototype(): Bridge {
       version: "0.1.0",
       hotkey,
       configDir: "C:\\Users\\you\\AppData\\Roaming\\pluck",
-      actions: sample.actions,
+      actions: structuredClone(sample.actions),
       problems: [],
       agent,
       platform: "windows",

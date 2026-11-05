@@ -138,13 +138,13 @@ export function MenuTab({
             save(
               editing === "new"
                 ? [...actions, saved]
-                : actions.map((action) => (action === editing ? saved : action)),
+                : actions.map((action) => (action.id === editing.id ? saved : action)),
             )
           }
           onDelete={
             editing === "new"
               ? undefined
-              : () => save(actions.filter((action) => action !== editing))
+              : () => save(actions.filter((action) => action.id !== editing.id))
           }
         />
       )}
@@ -170,7 +170,8 @@ function ActionDialog({
   onSave: (action: Action) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
-  const others = actions.filter((other) => other !== action);
+  // By id: the window reloads the actions on focus, so the objects change while the dialog is open.
+  const others = actions.filter((other) => other.id !== action?.id);
   const [kind, setKind] = useState(action && !action.agent ? "script" : "prompt");
   const [name, setName] = useState(action?.name ?? "");
   /** Follows the name until it's typed, so a new action gets a free key on its own. */
