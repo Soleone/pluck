@@ -178,6 +178,9 @@ pub struct Settings {
   /// Windows only: scripts and agents run inside WSL instead of Windows.
   #[serde(default)]
   pub wsl: bool,
+  /// Windows only: in a browser with nothing selected, copy the page's address from its address bar.
+  #[serde(default)]
+  pub browser_url: bool,
   #[serde(default)]
   pub agent: AgentSettings,
 }
@@ -203,7 +206,7 @@ pub fn settings(dir: &Path) -> Settings {
   fs::read_to_string(dir.join(SETTINGS))
     .ok()
     .and_then(|text| serde_json::from_str(&text).ok())
-    .unwrap_or_else(|| Settings { hotkey: DEFAULT_HOTKEY.into(), wsl: false, agent: AgentSettings::default() })
+    .unwrap_or_else(|| Settings { hotkey: DEFAULT_HOTKEY.into(), wsl: false, browser_url: false, agent: AgentSettings::default() })
 }
 
 pub fn save_settings(dir: &Path, settings: &Settings) -> io::Result<()> {

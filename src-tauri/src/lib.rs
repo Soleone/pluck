@@ -57,6 +57,7 @@ struct HomeState {
   /// "windows", "macos" or "linux".
   platform: &'static str,
   wsl: bool,
+  browser_url: bool,
   autostart: bool,
 }
 
@@ -120,6 +121,7 @@ pub fn run() {
       set_hotkey,
       set_wsl,
       set_autostart,
+      set_browser_url,
       pick_folder,
       pause_hotkey,
       open_config_folder,
@@ -176,7 +178,16 @@ fn open_menu(app: &AppHandle) {
     return;
   }
   let target = grab::target();
-  let selection = grab::copy_selection();
+  #[allow(unused_mut)]
+  let mut selection = grab::copy_selection();
+  #[cfg(windows)]
+  if let Ok(found) = &mut selection
+    && found.text.is_empty()
+    && grab::is_browser(&target.app)
+    && config::settings(&config_dir(app)).browser_url
+  {
+    found.url = grab::address_bar_url();
+  }
   GRABBING.store(false, Ordering::SeqCst);
 
   // With nothing selected the clipboard stands in; with that empty too, home opens.
@@ -338,6 +349,7 @@ fn home_state(app: AppHandle) -> HomeState {
       "linux"
     },
     wsl: settings.wsl,
+    browser_url: settings.browser_url,
     autostart: app.autolaunch().is_enabled().unwrap_or(false),
   }
 }
@@ -346,6 +358,13 @@ fn home_state(app: AppHandle) -> HomeState {
 fn set_wsl(app: AppHandle, wsl: bool) -> Result<(), String> {
   let dir = config_dir(&app);
   let settings = config::Settings { wsl, ..config::settings(&dir) };
+  config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the setting: {error}"))
+}
+
+#[tauri::command]
+fn set_browser_url(app: AppHandle, enabled: bool) -> Result<(), String> {
+  let dir = config_dir(&app);
+  let settings = config::Settings { browser_url: enabled, ..config::settings(&dir) };
   config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the setting: {error}"))
 }
 

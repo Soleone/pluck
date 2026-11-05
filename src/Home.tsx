@@ -191,7 +191,8 @@ function HotkeySetting({
   );
 }
 
-/** Starting at login, and on Windows whether scripts and agents run in WSL. */
+/** Starting at login, and on Windows whether scripts and agents run in WSL and whether to read
+ * browser addresses. */
 function GeneralSetting({
   state,
   onChange,
@@ -233,6 +234,26 @@ function GeneralSetting({
             <FieldLabel htmlFor="wsl">Run in WSL</FieldLabel>
             <FieldDescription>
               Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths.
+            </FieldDescription>
+          </div>
+        </Field>
+      )}
+      {state.platform === "windows" && (
+        <Field orientation="horizontal">
+          <Checkbox
+            id="browser-url"
+            checked={state.browserUrl}
+            onCheckedChange={(browserUrl) =>
+              change({ ...state, browserUrl }, bridge.setBrowserUrl(browserUrl))
+            }
+          />
+          <div className="flex flex-col gap-0.5">
+            <FieldLabel htmlFor="browser-url">
+              In browsers, grab the URL when nothing is selected
+            </FieldLabel>
+            <FieldDescription>
+              Pluck presses Ctrl+L, Ctrl+C and Esc to copy the address, then puts your clipboard
+              back.
             </FieldDescription>
           </div>
         </Field>

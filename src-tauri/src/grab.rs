@@ -52,6 +52,43 @@ pub fn copy_selection() -> Result<Selection, String> {
   Ok(selection)
 }
 
+/// Process names of browsers whose address bar `Ctrl+L` selects. Other apps give the keys other
+/// meanings, like left-aligning text.
+#[cfg(windows)]
+const BROWSERS: [&str; 12] =
+  ["chrome", "msedge", "firefox", "brave", "vivaldi", "opera", "arc", "zen", "librewolf", "waterfox", "floorp", "thorium"];
+
+#[cfg(windows)]
+pub fn is_browser(app: &str) -> bool {
+  BROWSERS.contains(&app.to_lowercase().as_str())
+}
+
+/// Copies the address bar with `Ctrl+L` and `Ctrl+C`, leaves it with `Esc` and gives the clipboard
+/// back. Empty when nothing came that looks like a web address.
+#[cfg(windows)]
+pub fn address_bar_url() -> String {
+  let Ok(mut clipboard) = arboard::Clipboard::new() else { return String::new() };
+  let previous = clipboard.get_text().ok();
+  let before = platform::change_count();
+
+  platform::wait_for_modifiers_released();
+  platform::send_shortcut(platform::KEY_L);
+  // The address bar selects its text once it has focus.
+  sleep(Duration::from_millis(50));
+  platform::send_shortcut(platform::KEY_C);
+  let copied = (0..50).any(|_| {
+    sleep(Duration::from_millis(10));
+    before != platform::change_count()
+  });
+  platform::send_escape();
+  if !copied {
+    return String::new();
+  }
+  let url = clipboard.get_text().unwrap_or_default().trim().to_string();
+  let _ = restore(&mut clipboard, previous);
+  if url.starts_with("http://") || url.starts_with("https://") { url } else { String::new() }
+}
+
 /// Puts `text` in place of the target's selection by pasting it, then gives the clipboard back.
 #[cfg(not(target_os = "linux"))]
 pub fn paste(target: &Target, text: &str) -> Result<(), String> {
@@ -93,7 +130,7 @@ mod platform {
     UI::{
       Input::KeyboardAndMouse::{
         GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_C,
-        VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_V,
+        VK_CONTROL, VK_ESCAPE, VK_L, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_V,
       },
       WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, SetForegroundWindow},
     },
@@ -102,6 +139,7 @@ mod platform {
   pub type Window = isize;
   pub const KEY_C: VIRTUAL_KEY = VK_C;
   pub const KEY_V: VIRTUAL_KEY = VK_V;
+  pub const KEY_L: VIRTUAL_KEY = VK_L;
 
   pub fn target() -> Target {
     let window = unsafe { GetForegroundWindow() };
@@ -149,6 +187,11 @@ mod platform {
   /// Ctrl plus `letter`.
   pub fn send_shortcut(letter: VIRTUAL_KEY) {
     let inputs = [key(VK_CONTROL, false), key(letter, false), key(letter, true), key(VK_CONTROL, true)];
+    unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) };
+  }
+
+  pub fn send_escape() {
+    let inputs = [key(VK_ESCAPE, false), key(VK_ESCAPE, true)];
     unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) };
   }
 

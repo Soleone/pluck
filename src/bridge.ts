@@ -77,6 +77,8 @@ export type HomeState = {
   platform: "windows" | "macos" | "linux";
   /** Windows only: scripts and agents run inside WSL. */
   wsl: boolean;
+  /** Windows only: in a browser with nothing selected, read the page's address from its address bar. */
+  browserUrl: boolean;
   autostart: boolean;
 };
 
@@ -98,6 +100,7 @@ type Bridge = {
   setHotkey(hotkey: string): Promise<void>;
   pauseHotkey(): Promise<void>;
   setWsl(wsl: boolean): Promise<void>;
+  setBrowserUrl(enabled: boolean): Promise<void>;
   setAutostart(enabled: boolean): Promise<void>;
   /** A folder for agent sessions, named as WSL names it when they run there; null when cancelled. */
   pickFolder(): Promise<string | null>;
@@ -140,6 +143,7 @@ const native: Bridge = {
   setHotkey: (hotkey) => invoke("set_hotkey", { hotkey }),
   pauseHotkey: () => invoke("pause_hotkey"),
   setWsl: (wsl) => invoke("set_wsl", { wsl }),
+  setBrowserUrl: (enabled) => invoke("set_browser_url", { enabled }),
   setAutostart: (enabled) => invoke("set_autostart", { enabled }),
   pickFolder: () => invoke("pick_folder"),
   openConfigFolder: () => invoke("open_config_folder"),
@@ -291,6 +295,7 @@ function prototype(): Bridge {
   let hotkey = "Ctrl+Alt+Space";
   let agent: AgentSettings = { harness: "pi", model: null, thinking: null, folder: "~" };
   let wsl = false;
+  let browserUrl = false;
   let autostart = true;
   let sessions: AgentSession[] = [
     {
@@ -350,6 +355,7 @@ function prototype(): Bridge {
       agent,
       platform: "windows",
       wsl,
+      browserUrl,
       autostart,
     }),
     async setHotkey(next) {
@@ -360,6 +366,9 @@ function prototype(): Bridge {
     pauseHotkey: async () => {},
     async setWsl(next) {
       wsl = next;
+    },
+    async setBrowserUrl(next) {
+      browserUrl = next;
     },
     async setAutostart(next) {
       autostart = next;
