@@ -1,13 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="pick" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#a78bfa"/>
-      <stop offset="1" stop-color="#6d28d9"/>
+      <stop offset="0" stop-color="#d47676"/>
+      <stop offset="1" stop-color="#8f3439"/>
     </linearGradient>
   </defs>
   <path fill="url(#pick)" d="M512 960C372 872 96 584 96 330 96 160 290 64 512 64s416 96 416 266c0 254-276 542-416 630z"/>
-  <g fill="#fff" stroke="#fff" stroke-width="24" stroke-linejoin="round">
-    <path d="M480 230Q518.4 431.6 720 470Q518.4 508.4 480 710Q441.6 508.4 240 470Q441.6 431.6 480 230Z"/>
-    <path d="M712 166Q725.44 236.56 796 250Q725.44 263.44 712 334Q698.56 263.44 628 250Q698.56 236.56 712 166Z"/>
-  </g>
+  <path fill="#f5ebd2" stroke="#f5ebd2" stroke-width="24" stroke-linejoin="round" d="M512 216Q555.2 442.8 782 486Q555.2 529.2 512 756Q468.8 529.2 242 486Q468.8 442.8 512 216Z"/>
 </svg>

@@ -7,6 +7,7 @@ import {
   type Update,
 } from "@/bridge";
 import { modelChoices } from "@/agent/pi";
+import { AgentModelFields, type AgentModelChoice } from "@/components/soleone/agent";
 import { ChoiceField } from "@/ChoiceField";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Badge } from "@/components/ui/badge";
@@ -263,29 +264,30 @@ function AgentSetting({
   const choices = loaded ? modelChoices(loaded.models, loaded.settings) : [];
   const start = loaded?.start;
   const nameOf = (id: string) => choices.find((choice) => choice.id === id)?.name ?? id;
-  const model = choices.find((choice) => choice.id === (agent.model ?? start?.model));
-  const levels = model?.thinkingLevels ?? (agent.thinking ? [agent.thinking] : []);
-  /** What Pi uses when pluck names no level: its start level, or the chosen model's own. */
-  const piThinking = agent.model ? model?.thinking : start?.thinking;
-
-  const models = [
+  const startLevels = choices.find((choice) => choice.id === start?.model)?.thinkingLevels;
+  // "Pi default" leaves the model to Pi, and a model's marked level leaves the level to Pi.
+  const models: AgentModelChoice[] = [
     {
-      value: DEFAULT,
-      label: start ? `Pi default: ${nameOf(start.model)} · ${start.thinking}` : "Pi default",
+      id: DEFAULT,
+      label: start ? `Pi default: ${nameOf(start.model)}` : "Pi default",
+      thinkingLevels: startLevels ?? (start ? [start.thinking] : []),
+      thinking: start?.thinking ?? "",
     },
     ...choices.map((choice) => ({
-      value: choice.id,
-      label: `${choice.name} · ${choice.id.split("/")[0]} · ${choice.thinking}`,
+      ...choice,
+      label: `${choice.name} · ${choice.id.split("/")[0]}`,
     })),
   ];
   if (agent.model && !choices.some((choice) => choice.id === agent.model))
-    models.push({ value: agent.model, label: agent.model });
-  const thinking = [
-    { value: DEFAULT, label: piThinking ? `Pi default: ${piThinking}` : "Pi default" },
-    ...levels.map((level) => ({ value: level, label: level })),
-  ];
+    models.push({
+      id: agent.model,
+      label: agent.model,
+      thinkingLevels: agent.thinking ? [agent.thinking] : [],
+      thinking: "",
+    });
+  const model = models.find((choice) => choice.id === (agent.model ?? DEFAULT));
   const sessionModel = agent.model ?? start?.model;
-  const sessionThinking = agent.thinking ?? piThinking;
+  const sessionThinking = agent.thinking ?? model?.thinking;
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-4">
@@ -305,29 +307,19 @@ function AgentSetting({
           options={[{ value: "pi", label: "Pi" }]}
           onChange={() => {}}
         />
-        <div className="col-span-2">
-          <ChoiceField
-            id="agent-model"
-            label="Model"
-            value={agent.model ?? DEFAULT}
-            options={models}
-            onChange={(value) => {
-              const next = value === DEFAULT ? null : value;
-              const nextLevels = choices.find(
-                (choice) => choice.id === (next ?? start?.model),
-              )?.thinkingLevels;
-              const keepThinking = agent.thinking && nextLevels?.includes(agent.thinking);
-              save({ ...agent, model: next, thinking: keepThinking ? agent.thinking : null });
+        <div className="col-span-4">
+          <AgentModelFields
+            models={models}
+            model={agent.model ?? DEFAULT}
+            thinking={sessionThinking ?? ""}
+            onChange={(id, thinking) => {
+              const next = models.find((choice) => choice.id === id);
+              save({
+                ...agent,
+                model: id === DEFAULT ? null : id,
+                thinking: thinking === next?.thinking ? null : thinking,
+              });
             }}
-          />
-        </div>
-        <div className="col-span-2">
-          <ChoiceField
-            id="agent-thinking"
-            label="Thinking"
-            value={agent.thinking ?? DEFAULT}
-            options={thinking}
-            onChange={(value) => save({ ...agent, thinking: value === DEFAULT ? null : value })}
           />
         </div>
       </div>

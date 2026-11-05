@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { MessageCircle, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"

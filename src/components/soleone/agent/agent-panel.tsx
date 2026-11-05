@@ -1,6 +1,8 @@
+"use client"
+
 import { memo, useId, useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
-import { ArrowUp, Globe, Square, TextQuote, Wrench } from "lucide-react"
+import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -32,14 +34,6 @@ export type AgentTool = {
 
 export type AgentSource = { url: string; title?: string }
 
-/** The http(s) links in a tool's output, once each, for hosts whose tools return links as text. */
-export function sourcesIn(text: string): AgentSource[] {
-  const urls = text.match(/https?:\/\/[^\s"'<>()[\]]+/g) ?? []
-  return [...new Set(urls.map((url) => url.replace(/[.,;:!?]+$/, "")))]
-    .filter((url) => URL.canParse(url))
-    .map((url) => ({ url }))
-}
-
 /** Text a user message is about, such as a selection, shown above the message and open at first. */
 export type AgentQuote = {
   text: string
@@ -69,6 +63,8 @@ type AgentPanelProps = {
   onSend: (text: string) => Promise<boolean>
   onStop: () => void
   renderTool?: (tool: AgentTool) => ReactNode
+  /** The model and thinking level the conversation runs with, shown under the composer. */
+  model?: { name: string; thinking: string }
 }
 
 type AgentTurn = { id: string; role: AgentMessage["role"]; messages: AgentMessage[] }
@@ -213,7 +209,7 @@ const AssistantText = memo(function AssistantText({ text }: { text: string }) {
 
 /** Controlled UI only. The host owns transport, credentials, tools, and approval policy. */
 export function AgentPanel({
-  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool,
+  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model,
   placeholder = "Ask the agent…",
   emptyTitle = "What would you like to do?",
   emptyDescription = "Ask a question or describe a change. You stay in control of what gets applied.",
@@ -326,9 +322,16 @@ export function AgentPanel({
           </InputGroupAddon>
         </InputGroup>
       </form>
-      <p role="status" className="text-xs text-muted-foreground">
-        {working ? "Agent working. You can stop it at any time." : "Enter to send. Shift+Enter for a new line."}
-      </p>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <p role="status" className="truncate text-xs text-muted-foreground">
+          {working ? "Agent working. You can stop it at any time." : "Enter to send. Shift+Enter for a new line."}
+        </p>
+        {model && (
+          <Badge variant="secondary" title={`Model ${model.name}, thinking ${model.thinking}`}>
+            <Brain />{model.name} · {model.thinking}
+          </Badge>
+        )}
+      </div>
     </section>
   )
 }

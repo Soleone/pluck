@@ -1,4 +1,4 @@
-import { sourcesIn, type AgentMessage, type AgentTool } from "@/components/soleone/agent";
+import { piStep, type AgentMessage, type AgentTool } from "@/components/soleone/agent";
 
 /** Pi's RPC records and messages, reduced to the fields pluck reads. See Pi's docs/rpc.md. */
 type Part =
@@ -177,30 +177,6 @@ function textOf(content: string | Part[]) {
   return content.flatMap((part) => (part?.type === "text" ? [part.text] : [])).join("\n\n");
 }
 
-const verbs: Record<string, Record<AgentTool["status"], string>> = {
-  bash: { running: "Running", complete: "Ran", error: "Failed to run" },
-  read: { running: "Reading", complete: "Read", error: "Failed to read" },
-  edit: { running: "Editing", complete: "Edited", error: "Failed to edit" },
-  write: { running: "Writing", complete: "Wrote", error: "Failed to write" },
-  grep: { running: "Searching for", complete: "Searched for", error: "Failed to search for" },
-  find: { running: "Finding", complete: "Found", error: "Failed to find" },
-  ls: { running: "Listing", complete: "Listed", error: "Failed to list" },
-  web_search: { running: "Searching", complete: "Searched", error: "Failed to search" },
-  fetch_content: { running: "Reading", complete: "Read", error: "Failed to read" },
-};
-
-/** What a call is about: its command, path or pattern, or for the web tools (pi-web-access)
- * the queries or pages. */
-function subjectOf({ command, path, pattern, query, queries, url, urls }: Record<string, unknown>) {
-  const searches = Array.isArray(queries) ? queries : [query];
-  if (typeof searches[0] === "string")
-    return `for “${searches[0]}”${searches.length > 1 ? ` and ${searches.length - 1} more` : ""}`;
-  const pages = (Array.isArray(urls) ? urls : [url]).filter((page) => URL.canParse(page));
-  if (pages.length)
-    return `${new URL(pages[0]).hostname}${pages.length > 1 ? ` and ${pages.length - 1} more` : ""}`;
-  return [command, path, pattern].find((value) => typeof value === "string")?.split("\n")[0];
-}
-
 function toolOf(
   call: Extract<Part, { type: "toolCall" }>,
   result: Extract<PiMessage, { role: "toolResult" }> | undefined,
@@ -208,20 +184,8 @@ function toolOf(
 ): AgentTool {
   // A call without a result after the run ended was cut off.
   const status = result ? (result.isError ? "error" : "complete") : busy ? "running" : "error";
-  const known = verbs[call.name];
-  const label = known
-    ? `${known[status]} ${subjectOf(call.arguments) ?? ""}`.trim()
-    : `${verbs.bash![status]} ${call.name}`;
   const output = result && textOf(result.content);
-  // Pages being read show while they load; search results once they arrive.
-  const { url, urls } = call.arguments;
-  const sources =
-    call.name === "fetch_content"
-      ? sourcesIn([url, urls].flat().join(" "))
-      : call.name === "web_search" && output
-        ? sourcesIn(output)
-        : undefined;
-  return { id: call.id, name: call.name, label, status, output, sources };
+  return { id: call.id, name: call.name, status, output, ...piStep(call, status, output) };
 }
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
