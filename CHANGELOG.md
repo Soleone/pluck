@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Soleone/pluck/compare/v0.1.2...v0.1.3) (2026-11-05)
+
+### Bug Fixes
+
+* line the settings checkboxes up with their label, not the label and description ([87b093a](https://github.com/Soleone/pluck/commit/87b093a95c9c2894befbcb1d248ec1491b822cd6))
+* open the menu on the browser's URL when the setting grabs it, not on the clipboard ([2bdbd95](https://github.com/Soleone/pluck/commit/2bdbd95e8adfb2602163f8f322a16c44d7298613))
+
 ## [0.1.2](https://github.com/Soleone/pluck/compare/v0.1.1...v0.1.2) (2026-11-05)
 
 ### Features
