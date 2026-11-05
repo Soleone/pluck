@@ -27,6 +27,7 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 | `trigger.hotkey-default` | No hotkey has been chosen                        | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
 | `trigger.tray`           | Pluck is running on Windows or macOS             | It has a tray icon; a click opens home, its menu has Open Pluck, Agents and Quit  |
 | `trigger.start`          | Pluck is started, or started again while running | Home opens; a second copy never runs                                              |
+| `trigger.login`          | Start Pluck when you log in is checked           | Pluck starts with the system, into the tray                                       |
 | `trigger.cli-menu`       | `pluck menu` is run                              | Same as pressing the hotkey                                                       |
 | `trigger.cli-run`        | `pluck run <id>` is run                          | The action runs on the current selection without showing the menu                 |
 | `trigger.linux`          | Pluck runs on Linux                              | It registers no hotkey of its own; the window manager binds a key to `pluck menu` |
@@ -50,16 +51,20 @@ What pluck reads from the app you were in when the hotkey was pressed.
 
 ## Menu
 
-| Rule                | When                                                          | Then                                                                                                                  |
-| ------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `menu.open`         | The hotkey is pressed                                         | The menu opens at the cursor, kept fully on screen, with the first action highlighted                                 |
-| `menu.fast`         | The hotkey is pressed                                         | The menu is visible within 100 ms                                                                                     |
-| `menu.preview`      | The menu is open                                              | A one-line preview of the selected text sits above the actions                                                        |
-| `menu.accelerator`  | The menu is open and the key assigned to an action is pressed | That action runs                                                                                                      |
-| `menu.filter`       | A key without an assigned action is typed                     | The list narrows to actions whose name matches the typed text; accelerators stop applying until the filter is cleared |
-| `menu.run`          | `Enter`, or a click on an action                              | The highlighted or clicked action runs                                                                                |
-| `menu.close`        | `Esc`, or focus moves to another window                       | The menu closes and nothing runs                                                                                      |
-| `menu.focus-return` | The menu closes                                               | Focus returns to the app that was active before                                                                       |
+| Rule                | When                                                                      | Then                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `menu.open`         | The hotkey is pressed                                                     | The menu opens at the cursor, kept fully on screen, with the first action highlighted                                                   |
+| `menu.fast`         | The hotkey is pressed                                                     | The menu is visible within 100 ms                                                                                                       |
+| `menu.preview`      | The menu is open                                                          | A one-line preview of the selected text sits above the actions                                                                          |
+| `menu.accelerator`  | The menu is open and the key assigned to an action is pressed             | That action runs                                                                                                                        |
+| `menu.filter`       | A key without an assigned action is typed, or Space first                 | The list narrows to actions whose name matches the typed text; accelerators stop applying until the filter is cleared                   |
+| `menu.ask`          | Text is typed                                                             | The last row is "Ask: <text>"; picking it sends the question, with the selected text and where it came from, to an agent session        |
+| `menu.continue`     | The menu has agent actions or a question, and an agent session ran before | A line says agents start a new session, and how long ago the last session was active; `Tab` switches to continuing that session instead |
+| `menu.run`          | `Enter`, or a click on an action                                          | The highlighted or clicked action runs                                                                                                  |
+| `menu.close`        | `Esc`, or focus moves to another window                                   | The menu closes and nothing runs                                                                                                        |
+| `menu.focus-return` | The menu closes                                                           | Focus returns to the app that was active before                                                                                         |
+
+> Why: a single key runs its action, so a question that starts with one would run it; a leading Space makes it a question. Continuing a session is cheapest within a few minutes of its last run, while the model provider still caches its prompt, so the menu shows that time.
 
 ## Action
 
@@ -74,43 +79,45 @@ run = "scripts/explain.ps1"
 output = "show"
 ```
 
-| Rule                    | When                                                | Then                                                                                                                                         |
-| ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action.order`          | The menu opens                                      | Actions appear in the order they are listed in the config                                                                                    |
-| `action.defaults`       | Pluck starts and there is no `pluck.toml`           | It writes one with sample actions and their scripts                                                                                          |
-| `action.run`            | An action runs                                      | Its `run` command runs through the platform shell, with relative paths resolved against the config folder                                    |
-| `action.stdin`          | An action runs                                      | The selected text is written to the script's stdin                                                                                           |
-| `action.env`            | An action runs                                      | The script gets `PLUCK_APP`, `PLUCK_TITLE`, `PLUCK_URL` when known, and `PLUCK_TEXT` unless the text is too long for an environment variable |
-| `action.failure`        | The script exits non-zero                           | Pluck shows its stderr, or the exit code if stderr is empty                                                                                  |
-| `action.config-invalid` | The config can't be read or an entry is invalid     | The menu shows one line naming the file and the problem; valid entries still work                                                            |
-| `action.agent`          | An action has `agent = "<prompt>"` instead of `run` | Picking it closes the menu and opens the agents window on a new session, sent the prompt followed by the text and where it came from         |
-| `action.config-reload`  | The config file changes                             | The next menu shows the change without restarting pluck                                                                                      |
+| Rule                    | When                                                | Then                                                                                                                                                                                  |
+| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action.order`          | The menu opens                                      | Actions appear in the order they are listed in the config                                                                                                                             |
+| `action.defaults`       | Pluck starts and there is no `pluck.toml`           | It writes one with sample actions and their scripts: PowerShell on Windows, bash on macOS and Linux                                                                                   |
+| `action.run`            | An action runs                                      | Its `run` command runs through the platform shell (`cmd.exe`, WSL's bash when Run in WSL is checked, `sh` on macOS and Linux), with relative paths resolved against the config folder |
+| `action.stdin`          | An action runs                                      | The selected text is written to the script's stdin                                                                                                                                    |
+| `action.env`            | An action runs                                      | The script gets `PLUCK_APP`, `PLUCK_TITLE`, `PLUCK_URL` when known, and `PLUCK_TEXT` unless the text is too long for an environment variable                                          |
+| `action.failure`        | The script exits non-zero                           | Pluck shows its stderr, or the exit code if stderr is empty                                                                                                                           |
+| `action.config-invalid` | The config can't be read or an entry is invalid     | The menu shows one line naming the file and the problem; valid entries still work                                                                                                     |
+| `action.agent`          | An action has `agent = "<prompt>"` instead of `run` | Picking it closes the menu and opens the agents window on a new session, or the last one (`menu.continue`), sent the prompt followed by the text and where it came from               |
+| `action.config-reload`  | The config file changes                             | The next menu shows the change without restarting pluck                                                                                                                               |
 
 ## Output
 
 Each action's `output` says what happens with the script's stdout.
 
-| Rule             | When                 | Then                                                                                                                           |
-| ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives; `Esc` closes it                                   |
-| `output.copy`    | `output = "copy"`    | Stdout is put on the clipboard and a short confirmation appears                                                                |
-| `output.notify`  | `output = "notify"`  | The menu closes at once, the script runs in the background, and its first line of stdout (or "Done") appears as a notification |
-| `output.replace` | `output = "replace"` | Stdout replaces the selection in the original app                                                                              |
-| `output.default` | No `output` is given | It is `notify`                                                                                                                 |
+| Rule             | When                 | Then                                                                                                                                             |
+| ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives; `Esc` closes it                                                     |
+| `output.copy`    | `output = "copy"`    | Stdout is put on the clipboard and a short confirmation appears                                                                                  |
+| `output.notify`  | `output = "notify"`  | The menu closes at once, the script runs in the background, and its first line of stdout (or "Done") appears as a notification                   |
+| `output.replace` | `output = "replace"` | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels |
+| `output.default` | No `output` is given | It is `notify`                                                                                                                                   |
 
 ## Home
 
 A normal window with two tabs, Settings and Scripts. Closing it hides it; pluck keeps running in the tray.
 
-| Rule                    | When                                              | Then                                                                                                              |
-| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `home.tabs`             | Home opens                                        | It shows the Settings tab; Scripts is one click away                                                              |
-| `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one                                     |
-| `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                         |
-| `scripts.list`          | The Scripts tab is open                           | It lists the actions from `pluck.toml` in menu order with their key, command and output, plus any config problems |
-| `scripts.reload`        | Home gets focus                                   | The list is read from `pluck.toml` again                                                                          |
-| `scripts.edit`          | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                       |
-| `settings.actions`      | The Scripts tab is open                           | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml`                  |
+| Rule                    | When                                              | Then                                                                                                                                      |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `home.tabs`             | Home opens                                        | It shows the Settings tab; Scripts is one click away                                                                                      |
+| `settings.login`        | Start Pluck when you log in is clicked            | Pluck starts, or stops starting, with the system                                                                                          |
+| `settings.wsl`          | Run in WSL is checked (Windows only)              | Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths                                                           |
+| `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one. On Linux the section says how to bind `pluck menu` instead |
+| `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                                                 |
+| `scripts.list`          | The Scripts tab is open                           | It lists the actions from `pluck.toml` in menu order with their key, command and output, plus any config problems                         |
+| `scripts.reload`        | Home gets focus                                   | The list is read from `pluck.toml` again                                                                                                  |
+| `scripts.edit`          | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                                               |
+| `settings.actions`      | The Scripts tab is open                           | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml`                                          |
 
 ## Agents
 
@@ -124,20 +131,23 @@ key = "e"
 agent = "Explain this briefly."
 ```
 
-| Rule                      | When                                                          | Then                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent.window`            | Agents is picked in the tray or home, or an agent action runs | The agents window opens on the session; the sessions list on the left starts hidden and one click shows it                            |
-| `agent.harness`           | A session starts                                              | It runs the harness from Settings in the agent folder, with the chosen model and thinking level, or the harness's own defaults        |
-| `agent.new`               | New session is selected and a prompt is sent                  | A session starts on that prompt and is added to the list                                                                              |
-| `agent.sessions`          | The agents window is open                                     | Sessions pluck started are listed newest first, running ones with a spinner                                                           |
-| `agent.reopen`            | A session in the list is picked                               | It shows its history and takes new prompts, also after pluck restarted                                                                |
-| `agent.stream`            | The agent works                                               | Its reply streams in, and each tool call shows as a step that is running, done or failed                                              |
-| `agent.stop`              | Stop is clicked                                               | The current run is aborted; the session stays open                                                                                    |
-| `agent.exit`              | The harness can't start or stops                              | The session shows why, and the next prompt starts it again                                                                            |
-| `agent.dialogs`           | The harness asks a question through an extension dialog       | It is declined; the window can't show dialogs yet                                                                                     |
-| `settings.agent`          | The Settings tab is open                                      | It has the harness, model, thinking level and folder, plus Run in WSL on Windows; changes apply to new sessions                       |
-| `settings.agent-models`   | The model list is opened                                      | It lists the models in Pi's scope (`enabledModels`), or all Pi's models when it has none, after "Pi default"                          |
-| `settings.agent-thinking` | The thinking list is opened                                   | It lists "Pi default" and the levels the chosen model supports; changing to a model without the chosen level resets it to the default |
+| Rule                      | When                                                          | Then                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent.window`            | Agents is picked in the tray or home, or an agent action runs | The agents window opens on the session; the sessions list on the left starts hidden and one click shows it                                                                                                                                             |
+| `agent.harness`           | A session starts                                              | It runs the harness from Settings in the agent folder, with the chosen model and thinking level, or the harness's own defaults                                                                                                                         |
+| `agent.new`               | New session is selected and a prompt is sent                  | A session starts on that prompt and is added to the list                                                                                                                                                                                               |
+| `agent.sessions`          | The agents window is open                                     | Sessions pluck started are listed most recently active first, each with how long ago, running ones with a spinner                                                                                                                                      |
+| `agent.last-active`       | A session finishes a run                                      | Its time is kept, and the list, its header and the menu say how long ago it was                                                                                                                                                                        |
+| `agent.remove`            | A session's remove button is clicked                          | It stops and leaves the list; the harness keeps its own copy                                                                                                                                                                                           |
+| `agent.reopen`            | A session in the list is picked                               | It shows its history and takes new prompts, also after pluck restarted                                                                                                                                                                                 |
+| `agent.stream`            | The agent works                                               | Its reply streams in, and each tool call shows as a step that is running, done or failed                                                                                                                                                               |
+| `agent.stop`              | Stop is clicked                                               | The current run is aborted; the session stays open                                                                                                                                                                                                     |
+| `agent.exit`              | The harness can't start or stops                              | The session shows why, and the next prompt starts it again                                                                                                                                                                                             |
+| `agent.dialogs`           | The harness asks a question through an extension dialog       | The window shows it as a choice, yes or no, or a text field, and sends the answer; closing it cancels                                                                                                                                                  |
+| `settings.agent`          | The Settings tab is open                                      | It has the harness, model, thinking level and folder; changes apply to new sessions                                                                                                                                                                    |
+| `settings.agent-folder`   | Choose… next to the folder is clicked                         | A folder picker opens; with Run in WSL the picked folder is named as WSL sees it, like `/home/me/src`                                                                                                                                                  |
+| `settings.agent-models`   | The Settings tab is open                                      | Pi is asked for its models right away; the list has "Pi default" with the model and thinking level Pi starts with, then the models in Pi's scope (`enabledModels`), or all its models when it has none, each with the thinking level Pi starts it with |
+| `settings.agent-thinking` | The thinking list is opened                                   | It lists "Pi default" with the level it means for the chosen model, and the levels that model supports; changing to a model without the chosen level resets it to the default. A line below says which model and level new sessions use                |
 
 ## Updates
 

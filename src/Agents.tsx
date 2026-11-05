@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, PanelLeft, Plus } from "lucide-react";
+import { LoaderCircle, PanelLeft, Plus, X } from "lucide-react";
+import { AgentDialog, type DialogAnswer } from "@/AgentDialog";
+import { ago } from "@/agent/ago";
 import { bridge, type AgentSession } from "@/bridge";
 import {
   agentMessages,
   applyRecord,
-  dialogReply,
+  dialogOf,
   emptyTranscript,
+  type PiDialog,
   type Transcript,
 } from "@/agent/pi";
 import { AgentPanel } from "@/components/soleone/agent";
@@ -19,6 +22,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -35,15 +39,23 @@ export function Agents() {
   const running = useRef(new Set<string>());
   /** Hidden at first, so a new session has the window to itself. */
   const [sessionsShown, setSessionsShown] = useState(false);
+  /** Questions from Pi's extensions, oldest first, with the session that asks. */
+  const [dialogs, setDialogs] = useState<{ id: string; dialog: PiDialog }[]>([]);
 
-  useEffect(() => void bridge.agentSessions().then(setSessions), []);
+  const loadSessions = () => void bridge.agentSessions().then(setSessions);
+  useEffect(loadSessions, []);
   useEffect(
     () =>
       bridge.onAgent(({ id, record, exited }) => {
         if (record) {
-          const reply = dialogReply(record);
-          if (reply) void bridge.agentSend(id, reply);
-        } else running.current.delete(id);
+          const dialog = dialogOf(record);
+          if (dialog) setDialogs((current) => [...current, { id, dialog }]);
+          // A finished run moves the session to the top with a new time.
+          if (record.type === "agent_settled") loadSessions();
+        } else {
+          running.current.delete(id);
+          setDialogs((current) => current.filter((asked) => asked.id !== id));
+        }
         setTranscripts((current) => {
           const transcript = current[id] ?? emptyTranscript;
           const next = record
@@ -55,7 +67,11 @@ export function Agents() {
     [],
   );
   useEffect(
-    () => bridge.onAgentRequest(({ title, prompt }) => void start(title, prompt).catch(fail)),
+    () =>
+      bridge.onAgentRequest(
+        ({ title, prompt, session }) =>
+          void (session ? continueWith(session, prompt) : start(title, prompt)).catch(fail),
+      ),
     [],
   );
 
@@ -79,12 +95,32 @@ export function Agents() {
     await bridge.agentSend(id, { type: "prompt", message: text });
   }
 
-  async function open(session: AgentSession) {
-    setSelected(session.id);
+  /** Runs a listed session again and loads its history, unless it is running. */
+  async function resume(id: string) {
+    setSelected(id);
     setError(undefined);
-    if (running.current.has(session.id)) return;
-    await run(session.id, session.title).catch(fail);
-    await bridge.agentSend(session.id, { type: "get_messages" }).catch(fail);
+    if (running.current.has(id)) return;
+    await run(id, "");
+    await bridge.agentSend(id, { type: "get_messages" });
+  }
+
+  async function continueWith(id: string, text: string) {
+    await resume(id);
+    await bridge.agentSend(id, { type: "prompt", message: text });
+  }
+
+  async function remove(id: string) {
+    await bridge.agentRemove(id).catch(fail);
+    running.current.delete(id);
+    setSessions((current) => current.filter((session) => session.id !== id));
+    if (selected === id) setSelected(null);
+  }
+
+  function answer(id: string, dialog: PiDialog, reply: DialogAnswer) {
+    setDialogs((current) => current.filter((asked) => asked.dialog !== dialog));
+    void bridge
+      .agentSend(id, { type: "extension_ui_response", id: dialog.id, ...reply })
+      .catch(fail);
   }
 
   async function send(text: string) {
@@ -101,6 +137,8 @@ export function Agents() {
   }
 
   const transcript = (selected && transcripts[selected]) || emptyTranscript;
+  const current = sessions.find((session) => session.id === selected);
+  const asked = dialogs[0];
 
   return (
     <SidebarProvider className="h-full min-h-0">
@@ -124,13 +162,29 @@ export function Agents() {
                   {sessions.map((session) => (
                     <SidebarMenuItem key={session.id}>
                       <SidebarMenuButton
+                        size="lg"
                         isActive={session.id === selected}
                         title={session.title}
-                        onClick={() => void open(session)}
+                        onClick={() => void resume(session.id).catch(fail)}
                       >
-                        <span className="truncate">{session.title}</span>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">{session.title}</span>
+                          {session.lastActive > 0 && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {ago(session.lastActive)}
+                            </span>
+                          )}
+                        </span>
                         {transcripts[session.id]?.busy && <LoaderCircle className="animate-spin" />}
                       </SidebarMenuButton>
+                      <SidebarMenuAction
+                        showOnHover
+                        aria-label="Remove session"
+                        title="Remove from the list"
+                        onClick={() => void remove(session.id)}
+                      >
+                        <X />
+                      </SidebarMenuAction>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
@@ -150,9 +204,10 @@ export function Agents() {
           >
             <PanelLeft />
           </Button>
-          <span className="truncate font-medium">
-            {sessions.find((session) => session.id === selected)?.title ?? "New session"}
-          </span>
+          <span className="truncate font-medium">{current?.title ?? "New session"}</span>
+          {current && current.lastActive > 0 && (
+            <span className="shrink-0 text-muted-foreground">{ago(current.lastActive)}</span>
+          )}
         </header>
         <div className="flex min-h-0 flex-1 flex-col p-4">
           <AgentPanel
@@ -176,6 +231,14 @@ export function Agents() {
           />
         </div>
       </SidebarInset>
+      {asked && (
+        <AgentDialog
+          key={asked.dialog.id}
+          dialog={asked.dialog}
+          session={sessions.find((session) => session.id === asked.id)?.title ?? "Pi"}
+          onAnswer={(reply) => answer(asked.id, asked.dialog, reply)}
+        />
+      )}
     </SidebarProvider>
   );
 }

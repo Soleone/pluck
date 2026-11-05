@@ -46,6 +46,8 @@ export type PiSettings = {
   defaultModel?: string;
   defaultThinkingLevel?: string;
   enabledModels?: string[];
+  /** The thinking level Pi last used with each model, by `provider/id`. */
+  modelThinkingLevels?: Record<string, string>;
 };
 
 /** One session as pluck knows it: Pi's messages so far, whether it is working, and why it stopped. */
@@ -96,11 +98,18 @@ function stream(content: Part[], event: StreamEvent): Part[] {
   return next;
 }
 
-/** Pi's dialogs block until answered; the agents window has no UI for them yet, so they are declined. */
-export function dialogReply(record: PiRecord) {
+/** A question from one of Pi's extensions; Pi waits for the answer, or its timeout. */
+export type PiDialog =
+  | { id: string; method: "select"; title: string; options: string[] }
+  | { id: string; method: "confirm"; title: string; message?: string }
+  | { id: string; method: "input"; title: string; placeholder?: string }
+  | { id: string; method: "editor"; title: string; prefill?: string };
+
+/** The dialog a record asks for. Other UI requests, like notifications, need no answer. */
+export function dialogOf(record: PiRecord): PiDialog | null {
   const dialogs = ["select", "confirm", "input", "editor"];
   return record.type === "extension_ui_request" && dialogs.includes(record.method ?? "")
-    ? { type: "extension_ui_response", id: record.id, cancelled: true }
+    ? (record as unknown as PiDialog)
     : null;
 }
 
@@ -159,11 +168,14 @@ function toolOf(
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-export type ModelChoice = { id: string; name: string; thinkingLevels: string[] };
+/** `thinking` is the level Pi starts the model with when pluck names no level. */
+export type ModelChoice = { id: string; name: string; thinkingLevels: string[]; thinking: string };
 
 /**
  * The models to offer: Pi's own scope (`enabledModels`, what Ctrl+P cycles through) when it has one,
  * else every model Pi can use. Patterns may carry a `:level` suffix and `*` wildcards.
+ * Like Pi, a model's thinking is its last used level, else Pi's default, else medium, and never
+ * more than the model supports.
  */
 export function modelChoices(models: PiModel[], settings: PiSettings | null): ModelChoice[] {
   const patterns = (settings?.enabledModels ?? []).map((pattern) => {
@@ -178,11 +190,16 @@ export function modelChoices(models: PiModel[], settings: PiSettings | null): Mo
           (pattern) => pattern.test(`${model.provider}/${model.id}`) || pattern.test(model.id),
         ),
     )
-    .map((model) => ({
-      id: `${model.provider}/${model.id}`,
-      name: model.name,
-      thinkingLevels: model.reasoning
+    .map((model) => {
+      const id = `${model.provider}/${model.id}`;
+      const supported = model.reasoning
         ? thinkingLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
-        : ["off"],
-    }));
+        : ["off"];
+      const wanted =
+        settings?.modelThinkingLevels?.[id] ?? settings?.defaultThinkingLevel ?? "medium";
+      const below = supported.filter(
+        (level) => thinkingLevels.indexOf(level) <= thinkingLevels.indexOf(wanted),
+      );
+      return { id, name: model.name, thinkingLevels: supported, thinking: below.at(-1) ?? "off" };
+    });
 }

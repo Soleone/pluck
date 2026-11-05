@@ -7,7 +7,10 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
 - `pnpm dev:web` runs the UI in a browser with sample data. Use it for UI work.
 - `pnpm dev` runs the native app. It builds for the OS it runs on, so for Windows: run `win-sync` here (copies to `D:\src\wsl\pluck`, profile in `~/.config/win-sync/pluck.ignore`), then `pnpm install` and `pnpm dev` there in PowerShell.
 - `pnpm build:tauri` builds the app and installers. On Windows it builds only the NSIS setup exe (`src-tauri\target\release\bundle\nsis`); the plain exe is `src-tauri\target\release\pluck.exe`.
-- WSL lacks the system libraries for a Linux build. To type-check the Windows code from WSL, run `cargo check --target x86_64-pc-windows-gnu` in `src-tauri` with `x86_64-w64-mingw32-windres`, `-gcc` and `-ar` on PATH; stubs that only touch their output file are enough, since checking links nothing.
+- WSL lacks the system libraries for a Linux build, so nothing native links here, and Rust tests run on Windows (`cargo test` in `src-tauri`) and in the release workflow. Every platform still type-checks from WSL, since checking links nothing; stub tools that only touch their output file are enough:
+  - Windows: `cargo clippy --tests --target x86_64-pc-windows-gnu` with `x86_64-w64-mingw32-windres`, `-gcc` and `-ar` stubs on PATH.
+  - macOS: `cargo clippy --tests --target aarch64-apple-darwin` with `CC_aarch64_apple_darwin` and `AR_aarch64_apple_darwin` pointing at stubs.
+  - Linux: `cargo clippy --tests` with `PKG_CONFIG` pointing at a stub that answers `--modversion` with any version and succeeds otherwise.
 - The icon is `public/favicon.svg`. After changing it, run `pnpm tauri icon public/favicon.svg` and delete the generated `android/` and `ios/` folders.
 
 ## Releasing

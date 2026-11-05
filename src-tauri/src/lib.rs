@@ -21,20 +21,27 @@ use tauri::{
   menu::{Menu, MenuItem},
   tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 /// What the menu shows for one trigger.
 #[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Opened {
   text: String,
   /// Nothing was selected, so `text` is what the clipboard held.
   clipboard: bool,
   app: String,
   title: String,
+  /// The page the text was copied from, when the browser says so.
+  url: String,
   actions: Vec<Action>,
   problems: Vec<String>,
+  /// The most recently active agent session, which agent actions can continue.
+  last_session: Option<AgentSession>,
 }
 
 /// What the home screen shows; read again each time it gets focus.
@@ -47,14 +54,18 @@ struct HomeState {
   actions: Vec<Action>,
   problems: Vec<String>,
   agent: AgentSettings,
-  windows: bool,
+  /// "windows", "macos" or "linux".
+  platform: &'static str,
+  wsl: bool,
+  autostart: bool,
 }
 
-/// Asks the agents window to start a session on `prompt`, from a menu action.
+/// Asks the agents window to send `prompt` from the menu, to `session` or else a new session.
 #[derive(Clone, Serialize)]
 struct AgentRequest {
   title: String,
   prompt: String,
+  session: Option<String>,
 }
 
 #[derive(Default)]
@@ -63,7 +74,7 @@ struct Session {
   target: Target,
 }
 
-/// Progress of a `show` action. `run` is chosen by the menu so it can ignore earlier runs.
+/// Progress of a `show` or `replace` action. `run` is chosen by the menu so it can ignore earlier runs.
 #[derive(Clone, Serialize)]
 struct RunEvent {
   run: u32,
@@ -78,7 +89,7 @@ static GRABBING: AtomicBool = AtomicBool::new(false);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_single_instance::init(|app, _, _| show_window(app, "home")))
+    .plugin(tauri_plugin_single_instance::init(|app, args, _| started(app, &args)))
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, _, event| {
@@ -89,6 +100,8 @@ pub fn run() {
         })
         .build(),
     )
+    .plugin(tauri_plugin_autostart::Builder::new().build())
+    .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_process::init())
@@ -97,9 +110,14 @@ pub fn run() {
     .manage(Agents::default())
     .invoke_handler(tauri::generate_handler![
       run_action,
+      ask,
+      replace,
       dismiss,
       home_state,
       set_hotkey,
+      set_wsl,
+      set_autostart,
+      pick_folder,
       pause_hotkey,
       open_config_folder,
       edit_config,
@@ -108,6 +126,7 @@ pub fn run() {
       agent_sessions,
       agent_start,
       agent_send,
+      agent_remove,
       show_agents
     ])
     .on_window_event(|window, event| match event {
@@ -122,15 +141,28 @@ pub fn run() {
     })
     .setup(|app| {
       let hotkey = config::settings(&config_dir(app.handle())).hotkey;
-      if let Err(error) = app.global_shortcut().register(hotkey.as_str()) {
+      // Wayland doesn't let apps grab keys; the window manager binds one to `pluck menu`.
+      if cfg!(not(target_os = "linux"))
+        && let Err(error) = app.global_shortcut().register(hotkey.as_str())
+      {
         notify(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
       }
       add_tray(app.handle(), &hotkey)?;
-      show_window(app.handle(), "home");
+      started(app.handle(), &std::env::args().collect::<Vec<_>>());
       Ok(())
     })
     .run(tauri::generate_context!())
     .expect("error while running pluck");
+}
+
+/// `pluck menu` opens the menu, whether pluck was running or not; a plain start opens home.
+fn started(app: &AppHandle, args: &[String]) {
+  if args.get(1).is_some_and(|arg| arg == "menu") {
+    let app = app.clone();
+    thread::spawn(move || open_menu(&app));
+  } else {
+    show_window(app, "home");
+  }
 }
 
 fn open_menu(app: &AppHandle) {
@@ -144,19 +176,22 @@ fn open_menu(app: &AppHandle) {
 
   // With nothing selected the clipboard stands in; with that empty too, home opens.
   let selection = selection.unwrap_or_default();
-  let clipboard = selection.is_empty();
-  let text = if clipboard { grab::clipboard_text() } else { selection };
+  let clipboard = selection.text.is_empty();
+  let text = if clipboard { grab::clipboard_text() } else { selection.text };
   if text.is_empty() {
     return show_window(app, "home");
   }
-  let config = config::load(&config_dir(app));
+  let dir = config_dir(app);
+  let config = config::load(&dir);
   let opened = Opened {
     text,
     clipboard,
     app: target.app.clone(),
     title: target.title.clone(),
+    url: selection.url,
     actions: config.actions,
     problems: config.problems,
+    last_session: agent::sessions(&dir).into_iter().next(),
   };
   let _ = window.emit("pluck://open", &opened);
   *app.state::<Mutex<Session>>().lock().unwrap() = Session { opened, target };
@@ -166,26 +201,36 @@ fn open_menu(app: &AppHandle) {
   let _ = window.set_focus();
 }
 
+/// Runs a menu action. Agent actions go to the last session when `continue_session` is set.
 #[tauri::command]
-fn run_action(app: AppHandle, session: State<Mutex<Session>>, id: String, run: u32) -> Result<(), String> {
+fn run_action(
+  app: AppHandle,
+  session: State<Mutex<Session>>,
+  id: String,
+  run: u32,
+  continue_session: bool,
+) -> Result<(), String> {
   let (action, child) = {
     let session = session.lock().unwrap();
     let opened = &session.opened;
     let action = opened.actions.iter().find(|action| action.id == id).cloned().ok_or("Unknown action")?;
     if let Some(prompt) = &action.agent {
-      let request = AgentRequest { title: title_of(&opened.text), prompt: agent_prompt(prompt, opened) };
+      let request = agent_request(title_of(&opened.text), agent_prompt(prompt, opened), opened, continue_session);
       drop(session);
-      hide_menu(&app);
-      let _ = app.emit_to("agents", "pluck://agent-request", request);
-      show_window(&app, "agents");
+      send_to_agents(&app, request);
       return Ok(());
     }
-    let env = [("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
-    let child = action::spawn(&action.run, &config_dir(&app), &opened.text, &env).map_err(|error| error.to_string())?;
+    let mut env = vec![("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
+    if !opened.url.is_empty() {
+      env.push(("PLUCK_URL", opened.url.as_str()));
+    }
+    let dir = config_dir(&app);
+    let wsl = config::settings(&dir).wsl;
+    let child = action::spawn(&action.run, wsl, &dir, &opened.text, &env).map_err(|error| error.to_string())?;
     (action, child)
   };
   match action.output {
-    Output::Show => {
+    Output::Show | Output::Replace => {
       thread::spawn(move || show(&app, child, run));
     }
     Output::Copy | Output::Notify => {
@@ -194,6 +239,47 @@ fn run_action(app: AppHandle, session: State<Mutex<Session>>, id: String, run: u
     }
   }
   Ok(())
+}
+
+/// Asks the agent `question` about the text, from what was typed in the menu.
+#[tauri::command]
+fn ask(app: AppHandle, session: State<Mutex<Session>>, question: String, continue_session: bool) {
+  let request = {
+    let session = session.lock().unwrap();
+    let opened = &session.opened;
+    agent_request(title_of(&question), agent_prompt(&question, opened), opened, continue_session)
+  };
+  send_to_agents(&app, request);
+}
+
+/// Puts a `replace` action's result in place of the selection, or on the clipboard when the text
+/// came from there.
+#[tauri::command]
+fn replace(app: AppHandle, text: String) {
+  let _ = menu_window(&app).hide();
+  thread::spawn(move || {
+    let session = app.state::<Mutex<Session>>();
+    let session = session.lock().unwrap();
+    let result = if session.opened.clipboard {
+      grab::set_clipboard(&text)
+    } else {
+      grab::paste(&session.target, &text)
+    };
+    if let Err(error) = result {
+      notify(&app, "Couldn't replace the text", &error);
+    }
+  });
+}
+
+fn agent_request(title: String, prompt: String, opened: &Opened, continue_session: bool) -> AgentRequest {
+  let session = opened.last_session.as_ref().filter(|_| continue_session).map(|session| session.id.clone());
+  AgentRequest { title, prompt, session }
+}
+
+fn send_to_agents(app: &AppHandle, request: AgentRequest) {
+  hide_menu(app);
+  let _ = app.emit_to("agents", "pluck://agent-request", request);
+  show_window(app, "agents");
 }
 
 #[tauri::command]
@@ -213,8 +299,39 @@ fn home_state(app: AppHandle) -> HomeState {
     actions: config.actions,
     problems: config.problems,
     agent: settings.agent,
-    windows: cfg!(windows),
+    platform: if cfg!(windows) {
+      "windows"
+    } else if cfg!(target_os = "macos") {
+      "macos"
+    } else {
+      "linux"
+    },
+    wsl: settings.wsl,
+    autostart: app.autolaunch().is_enabled().unwrap_or(false),
   }
+}
+
+#[tauri::command]
+fn set_wsl(app: AppHandle, wsl: bool) -> Result<(), String> {
+  let dir = config_dir(&app);
+  let settings = config::Settings { wsl, ..config::settings(&dir) };
+  config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the setting: {error}"))
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+  let launch = app.autolaunch();
+  let changed = if enabled { launch.enable() } else { launch.disable() };
+  changed.map_err(|error| format!("Couldn't change starting at login: {error}"))
+}
+
+/// A folder for agent sessions, as WSL names it when sessions run there. None when cancelled.
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Option<String> {
+  let wsl = config::settings(&config_dir(&app)).wsl;
+  let folder = app.dialog().file().blocking_pick_folder()?.into_path().ok()?;
+  let folder = folder.display().to_string();
+  Some(if wsl { agent::wsl_path(&folder) } else { folder })
 }
 
 /// Registers `hotkey` in place of the current one and saves it, or keeps the current one.
@@ -263,8 +380,8 @@ fn set_agent_settings(app: AppHandle, agent: AgentSettings) -> Result<(), String
 /// Blocks for a few seconds while Pi starts, so it runs off the main thread.
 #[tauri::command]
 async fn agent_models(app: AppHandle) -> Result<serde_json::Value, String> {
-  let settings = config::settings(&config_dir(&app)).agent;
-  agent::models(&settings.folder, settings.wsl)
+  let settings = config::settings(&config_dir(&app));
+  agent::models(&settings.agent.folder, settings.wsl)
 }
 
 #[tauri::command]
@@ -276,29 +393,35 @@ fn agent_sessions(app: AppHandle) -> Vec<AgentSession> {
 #[tauri::command]
 fn agent_start(app: AppHandle, agents: State<Agents>, id: String, title: String) -> Result<(), String> {
   let dir = config_dir(&app);
-  let mut sessions = agent::sessions(&dir);
   let mut args = Vec::new();
-  let session = match sessions.iter().find(|session| session.id == id) {
-    Some(session) => session.clone(),
+  let session = match agent::sessions(&dir).into_iter().find(|session| session.id == id) {
+    Some(session) => session,
     None => {
-      let settings = config::settings(&dir).agent;
-      if settings.harness != "pi" {
-        return Err(format!("Pluck can't run {} yet", settings.harness));
+      let settings = config::settings(&dir);
+      let agent = settings.agent;
+      if agent.harness != "pi" {
+        return Err(format!("Pluck can't run {} yet", agent.harness));
       }
-      args.extend(settings.model.into_iter().flat_map(|model| ["--model".to_string(), model]));
-      args.extend(settings.thinking.into_iter().flat_map(|level| ["--thinking".to_string(), level]));
-      let session = AgentSession { id, title, folder: settings.folder, wsl: settings.wsl };
-      sessions.insert(0, session.clone());
-      agent::save_sessions(&dir, &sessions).map_err(|error| format!("Couldn't save the session list: {error}"))?;
+      args.extend(agent.model.into_iter().flat_map(|model| ["--model".to_string(), model]));
+      args.extend(agent.thinking.into_iter().flat_map(|level| ["--thinking".to_string(), level]));
+      let session = AgentSession { id, title, folder: agent.folder, wsl: settings.wsl, last_active: agent::now() };
+      let added = session.clone();
+      agent::update_sessions(&dir, |sessions| sessions.insert(0, added))
+        .map_err(|error| format!("Couldn't save the session list: {error}"))?;
       session
     }
   };
-  agent::start(&app, &agents, &session, &args).map_err(|error| format!("Couldn't start Pi: {error}"))
+  agent::start(&app, &agents, &dir, &session, &args).map_err(|error| format!("Couldn't start Pi: {error}"))
 }
 
 #[tauri::command]
 fn agent_send(agents: State<Agents>, id: String, record: String) -> Result<(), String> {
   agent::send(&agents, &id, &record)
+}
+
+#[tauri::command]
+fn agent_remove(app: AppHandle, agents: State<Agents>, id: String) -> Result<(), String> {
+  agent::remove(&agents, &config_dir(&app), &id).map_err(|error| format!("Couldn't save the session list: {error}"))
 }
 
 #[tauri::command]
@@ -308,13 +431,16 @@ fn show_agents(app: AppHandle) {
 
 /// The action's prompt, then the text and where it came from.
 fn agent_prompt(prompt: &str, opened: &Opened) -> String {
-  let source = if opened.clipboard {
+  let mut source = if opened.clipboard {
     "the clipboard".to_string()
   } else if opened.title.is_empty() {
     opened.app.clone()
   } else {
     format!("{} ({})", opened.app, opened.title)
   };
+  if !opened.url.is_empty() {
+    source = format!("{source} at {}", opened.url);
+  }
   format!("{prompt}\n\nText from {source}:\n\n<text>\n{}\n</text>", opened.text)
 }
 
@@ -342,10 +468,9 @@ fn finish_in_background(app: &AppHandle, action: &Action, child: Child) {
     Err(error) => return notify(app, &failed, &error),
   };
   if let Output::Copy = action.output {
-    let copied = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(stdout.trim_end_matches(['\r', '\n'])));
-    return match copied {
+    return match grab::set_clipboard(stdout.trim_end_matches(['\r', '\n'])) {
       Ok(()) => notify(app, &action.name, "Copied"),
-      Err(error) => notify(app, &failed, &error.to_string()),
+      Err(error) => notify(app, &failed, &error),
     };
   }
   let first_line = stdout.lines().map(str::trim).find(|line| !line.is_empty());

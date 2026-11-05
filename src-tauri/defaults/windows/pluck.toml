@@ -1,0 +1,51 @@
+# Pluck reads this file each time the menu opens. Each [[action]] is one menu entry:
+#
+#   id      stable name for the action
+#   name    what the menu shows
+#   key     optional letter that runs it straight from the menu
+#   run     command line, run in this folder by cmd.exe, or by bash when Settings has Run in WSL.
+#           It gets the selected text on stdin and in PLUCK_TEXT (unless it's very long), plus
+#           PLUCK_APP, PLUCK_TITLE and, for text copied from a browser, PLUCK_URL.
+#   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
+#           "replace" previews it and puts it in place of the selection on Enter,
+#           "notify" (the default) runs in the background and shows its first line.
+#   agent   instead of run: a prompt. The text is sent with it to an agent session, using the
+#           agent set in Settings.
+
+[[action]]
+id = "explain"
+name = "Explain"
+key = "e"
+agent = "Explain this briefly."
+
+[[action]]
+id = "translate"
+name = "Translate to English"
+key = "t"
+run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/translate.ps1'
+
+[[action]]
+id = "search"
+name = "Search the web"
+key = "s"
+run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/search.ps1'
+
+[[action]]
+id = "bookmark"
+name = "Save as bookmark"
+key = "b"
+run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/bookmark.ps1'
+
+[[action]]
+id = "count"
+name = "Count words"
+key = "w"
+run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/count.ps1'
+output = "show"
+
+[[action]]
+id = "upper"
+name = "Uppercase"
+key = "u"
+run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/upper.ps1'
+output = "replace"

@@ -3,11 +3,12 @@
 #   id      stable name for the action
 #   name    what the menu shows
 #   key     optional letter that runs it straight from the menu
-#   run     command line, run by cmd.exe in this folder. It gets the selected text on stdin and
-#           in PLUCK_TEXT (unless it's very long), plus PLUCK_APP and PLUCK_TITLE.
+#   run     command line, run in this folder by sh. It gets the selected text on stdin and in
+#           PLUCK_TEXT, plus PLUCK_APP and PLUCK_TITLE.
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
+#           "replace" previews it and puts it in place of the selection on Enter,
 #           "notify" (the default) runs in the background and shows its first line.
-#   agent   instead of run: a prompt. The text is sent with it to a new agent session, using the
+#   agent   instead of run: a prompt. The text is sent with it to an agent session, using the
 #           agent set in Settings.
 
 [[action]]
@@ -20,30 +21,30 @@ agent = "Explain this briefly."
 id = "translate"
 name = "Translate to English"
 key = "t"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\translate.ps1'
+run = 'bash scripts/translate.sh'
 
 [[action]]
 id = "search"
 name = "Search the web"
 key = "s"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\search.ps1'
+run = 'bash scripts/search.sh'
 
 [[action]]
 id = "bookmark"
 name = "Save as bookmark"
 key = "b"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\bookmark.ps1'
+run = 'bash scripts/bookmark.sh'
 
 [[action]]
 id = "count"
 name = "Count words"
 key = "w"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\count.ps1'
+run = 'bash scripts/count.sh'
 output = "show"
 
 [[action]]
 id = "upper"
 name = "Uppercase"
 key = "u"
-run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upper.ps1'
-output = "copy"
+run = 'bash scripts/upper.sh'
+output = "replace"

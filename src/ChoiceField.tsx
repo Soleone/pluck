@@ -15,7 +15,6 @@ export function ChoiceField({
   value,
   options,
   onChange,
-  onOpen,
   disabled = false,
 }: {
   id: string;
@@ -23,7 +22,6 @@ export function ChoiceField({
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
-  onOpen?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -33,7 +31,6 @@ export function ChoiceField({
         name={id}
         value={value}
         onValueChange={(next) => next !== null && onChange(next)}
-        onOpenChange={(open) => open && onOpen?.()}
         disabled={disabled}
         items={options}
       >

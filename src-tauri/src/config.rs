@@ -1,18 +1,28 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Space";
+const DEFAULT_HOTKEY: &str = if cfg!(target_os = "macos") { "Super+Alt+Space" } else { "Ctrl+Alt+Space" };
 /// Written by the settings screen, unlike pluck.toml which is the user's.
 const SETTINGS: &str = "settings.json";
 
 /// Written on first run so the menu has something to try.
+#[cfg(windows)]
 const DEFAULT_FILES: [(&str, &str); 6] = [
-  ("pluck.toml", include_str!("../defaults/pluck.toml")),
-  ("scripts/translate.ps1", include_str!("../defaults/scripts/translate.ps1")),
-  ("scripts/search.ps1", include_str!("../defaults/scripts/search.ps1")),
-  ("scripts/bookmark.ps1", include_str!("../defaults/scripts/bookmark.ps1")),
-  ("scripts/count.ps1", include_str!("../defaults/scripts/count.ps1")),
-  ("scripts/upper.ps1", include_str!("../defaults/scripts/upper.ps1")),
+  ("pluck.toml", include_str!("../defaults/windows/pluck.toml")),
+  ("scripts/translate.ps1", include_str!("../defaults/windows/scripts/translate.ps1")),
+  ("scripts/search.ps1", include_str!("../defaults/windows/scripts/search.ps1")),
+  ("scripts/bookmark.ps1", include_str!("../defaults/windows/scripts/bookmark.ps1")),
+  ("scripts/count.ps1", include_str!("../defaults/windows/scripts/count.ps1")),
+  ("scripts/upper.ps1", include_str!("../defaults/windows/scripts/upper.ps1")),
+];
+#[cfg(not(windows))]
+const DEFAULT_FILES: [(&str, &str); 6] = [
+  ("pluck.toml", include_str!("../defaults/unix/pluck.toml")),
+  ("scripts/translate.sh", include_str!("../defaults/unix/scripts/translate.sh")),
+  ("scripts/search.sh", include_str!("../defaults/unix/scripts/search.sh")),
+  ("scripts/bookmark.sh", include_str!("../defaults/unix/scripts/bookmark.sh")),
+  ("scripts/count.sh", include_str!("../defaults/unix/scripts/count.sh")),
+  ("scripts/upper.sh", include_str!("../defaults/unix/scripts/upper.sh")),
 ];
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -21,6 +31,7 @@ pub enum Output {
   Show,
   Copy,
   Notify,
+  Replace,
 }
 
 /// Runs `run` as a script, or with `agent` set, starts an agent session on that prompt instead.
@@ -86,6 +97,9 @@ fn broken(problem: String) -> Config {
 #[derive(Serialize, Deserialize)]
 pub struct Settings {
   pub hotkey: String,
+  /// Windows only: scripts and agents run inside WSL instead of Windows.
+  #[serde(default)]
+  pub wsl: bool,
   #[serde(default)]
   pub agent: AgentSettings,
 }
@@ -97,16 +111,13 @@ pub struct AgentSettings {
   pub harness: String,
   pub model: Option<String>,
   pub thinking: Option<String>,
-  /// Where new sessions run, inside WSL when `wsl` is set.
+  /// Where new sessions run, inside WSL when the settings say so.
   pub folder: String,
-  /// Windows only: run the harness installed in WSL instead of the Windows one.
-  #[serde(default)]
-  pub wsl: bool,
 }
 
 impl Default for AgentSettings {
   fn default() -> Self {
-    Self { harness: "pi".into(), model: None, thinking: None, folder: "~".into(), wsl: false }
+    Self { harness: "pi".into(), model: None, thinking: None, folder: "~".into() }
   }
 }
 
@@ -114,7 +125,7 @@ pub fn settings(dir: &Path) -> Settings {
   fs::read_to_string(dir.join(SETTINGS))
     .ok()
     .and_then(|text| serde_json::from_str(&text).ok())
-    .unwrap_or_else(|| Settings { hotkey: DEFAULT_HOTKEY.into(), agent: AgentSettings::default() })
+    .unwrap_or_else(|| Settings { hotkey: DEFAULT_HOTKEY.into(), wsl: false, agent: AgentSettings::default() })
 }
 
 pub fn save_settings(dir: &Path, settings: &Settings) -> io::Result<()> {

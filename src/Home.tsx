@@ -53,11 +53,15 @@ export function Home() {
           <div className="flex flex-col gap-4">
             <HotkeySetting
               hotkey={state.hotkey}
+              platform={state.platform}
               onChange={(hotkey) => setState({ ...state, hotkey })}
             />
+            <GeneralSetting state={state} onChange={setState} />
             <AgentSetting
+              // WSL has its own Pi, with its own models.
+              key={String(state.wsl)}
               agent={state.agent}
-              windows={state.windows}
+              wsl={state.wsl}
               onChange={(agent) => setState({ ...state, agent })}
             />
             <p className="text-muted-foreground">Pluck {state.version}</p>
@@ -73,9 +77,11 @@ export function Home() {
 
 function HotkeySetting({
   hotkey,
+  platform,
   onChange,
 }: {
   hotkey: string;
+  platform: HomeState["platform"];
   onChange: (hotkey: string) => void;
 }) {
   const [recording, setRecording] = useState(false);
@@ -104,6 +110,19 @@ function HotkeySetting({
     if (next) finish(next);
   }
 
+  if (platform === "linux")
+    return (
+      <section className="flex flex-col gap-1 rounded-lg border p-4">
+        <span className="font-medium">Hotkey</span>
+        <span className="text-muted-foreground">
+          Wayland doesn't let apps grab keys, so bind one in your window manager to run{" "}
+          <code>pluck menu</code>. In Hyprland: <code>bind = SUPER, P, exec, pluck menu</code>
+        </span>
+      </section>
+    );
+
+  const modifiers = platform === "macos" ? "Ctrl, Option or Cmd" : "Ctrl, Alt or Win";
+
   return (
     <section className="flex flex-col gap-3 rounded-lg border p-4">
       <div className="flex items-center justify-between gap-4">
@@ -128,7 +147,7 @@ function HotkeySetting({
             <span className="text-muted-foreground">Press keys…</span>
           ) : (
             <KbdGroup>
-              {hotkeyKeys(hotkey).map((key) => (
+              {hotkeyKeys(hotkey, platform).map((key) => (
                 <Kbd key={key}>{key}</Kbd>
               ))}
             </KbdGroup>
@@ -136,9 +155,64 @@ function HotkeySetting({
         </Button>
       </div>
       <p className="text-muted-foreground">
-        Click it, then press the new keys: Ctrl, Alt or Win with a letter, digit, F-key or Space.
-        Escape keeps the current one.
+        Click it, then press the new keys: {modifiers} with a letter, digit, F-key or Space. Escape
+        keeps the current one.
       </p>
+      {problem && (
+        <p role="status" className="text-destructive">
+          {problem}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Starting at login, and on Windows whether scripts and agents run in WSL. */
+function GeneralSetting({
+  state,
+  onChange,
+}: {
+  state: HomeState;
+  onChange: (state: HomeState) => void;
+}) {
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function change(next: HomeState, saved: Promise<void>) {
+    setProblem(null);
+    onChange(next);
+    saved.catch((caught: unknown) => {
+      onChange(state);
+      setProblem(errorText(caught));
+    });
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border p-4">
+      <Field orientation="horizontal">
+        <Checkbox
+          id="autostart"
+          checked={state.autostart}
+          onCheckedChange={(autostart) =>
+            change({ ...state, autostart }, bridge.setAutostart(autostart))
+          }
+        />
+        <FieldLabel htmlFor="autostart">Start Pluck when you log in</FieldLabel>
+      </Field>
+      {state.platform === "windows" && (
+        <Field orientation="horizontal">
+          <Checkbox
+            id="wsl"
+            checked={state.wsl}
+            onCheckedChange={(wsl) => change({ ...state, wsl }, bridge.setWsl(wsl))}
+          />
+          <div className="flex flex-col gap-0.5">
+            <FieldLabel htmlFor="wsl">Run in WSL</FieldLabel>
+            <FieldDescription>
+              Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths.
+            </FieldDescription>
+          </div>
+        </Field>
+      )}
       {problem && (
         <p role="status" className="text-destructive">
           {problem}
@@ -153,26 +227,24 @@ const DEFAULT = "default";
 /** The harness, model and thinking level new agent sessions use, and the folder they run in. */
 function AgentSetting({
   agent,
-  windows,
+  wsl,
   onChange,
 }: {
   agent: AgentSettings;
-  windows: boolean;
+  wsl: boolean;
   onChange: (agent: AgentSettings) => void;
 }) {
-  const [catalog, setCatalog] = useState<AgentCatalog | "loading" | null>(null);
+  const [catalog, setCatalog] = useState<AgentCatalog | "loading" | null>("loading");
   const [problem, setProblem] = useState<string | null>(null);
   const [folder, setFolder] = useState(agent.folder);
 
-  /** Pi has to start to list its models, so that waits until a list is opened. */
-  function load() {
-    if (catalog) return;
-    setCatalog("loading");
+  // Pi takes a few seconds to start, so ask it once, as soon as the settings show.
+  useEffect(() => {
     bridge.agentCatalog().then(setCatalog, (caught: unknown) => {
       setCatalog(null);
       setProblem(errorText(caught));
     });
-  }
+  }, []);
 
   function save(next: AgentSettings) {
     setProblem(null);
@@ -182,33 +254,31 @@ function AgentSetting({
 
   const loaded = catalog && catalog !== "loading" ? catalog : null;
   const choices = loaded ? modelChoices(loaded.models, loaded.settings) : [];
-  const settings = loaded?.settings;
-  const piModel =
-    settings?.defaultProvider && settings.defaultModel
-      ? `${settings.defaultProvider}/${settings.defaultModel}`
-      : null;
-  const model = choices.find((choice) => choice.id === (agent.model ?? piModel));
+  const start = loaded?.start;
+  const nameOf = (id: string) => choices.find((choice) => choice.id === id)?.name ?? id;
+  const model = choices.find((choice) => choice.id === (agent.model ?? start?.model));
   const levels = model?.thinkingLevels ?? (agent.thinking ? [agent.thinking] : []);
-  const piName = choices.find((choice) => choice.id === piModel)?.name ?? piModel;
+  /** What Pi uses when pluck names no level: its start level, or the chosen model's own. */
+  const piThinking = agent.model ? model?.thinking : start?.thinking;
 
   const models = [
-    { value: DEFAULT, label: piName ? `Pi default (${piName})` : "Pi default" },
+    {
+      value: DEFAULT,
+      label: start ? `Pi default: ${nameOf(start.model)} · ${start.thinking}` : "Pi default",
+    },
     ...choices.map((choice) => ({
       value: choice.id,
-      label: `${choice.name} · ${choice.id.split("/")[0]}`,
+      label: `${choice.name} · ${choice.id.split("/")[0]} · ${choice.thinking}`,
     })),
   ];
   if (agent.model && !choices.some((choice) => choice.id === agent.model))
     models.push({ value: agent.model, label: agent.model });
   const thinking = [
-    {
-      value: DEFAULT,
-      label: settings?.defaultThinkingLevel
-        ? `Pi default (${settings.defaultThinkingLevel})`
-        : "Pi default",
-    },
+    { value: DEFAULT, label: piThinking ? `Pi default: ${piThinking}` : "Pi default" },
     ...levels.map((level) => ({ value: level, label: level })),
   ];
+  const sessionModel = agent.model ?? start?.model;
+  const sessionThinking = agent.thinking ?? piThinking;
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-4">
@@ -223,7 +293,7 @@ function AgentSetting({
           Open agents
         </Button>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <ChoiceField
           id="agent-harness"
           label="Harness"
@@ -231,59 +301,67 @@ function AgentSetting({
           options={[{ value: "pi", label: "Pi" }]}
           onChange={() => {}}
         />
-        <ChoiceField
-          id="agent-model"
-          label="Model"
-          value={agent.model ?? DEFAULT}
-          options={models}
-          onOpen={load}
-          onChange={(value) => {
-            const next = value === DEFAULT ? null : value;
-            const nextLevels = choices.find(
-              (choice) => choice.id === (next ?? piModel),
-            )?.thinkingLevels;
-            const keepThinking = agent.thinking && nextLevels?.includes(agent.thinking);
-            save({ ...agent, model: next, thinking: keepThinking ? agent.thinking : null });
-          }}
-        />
-        <ChoiceField
-          id="agent-thinking"
-          label="Thinking"
-          value={agent.thinking ?? DEFAULT}
-          options={thinking}
-          onOpen={load}
-          onChange={(value) => save({ ...agent, thinking: value === DEFAULT ? null : value })}
-        />
-      </div>
-      {windows && (
-        <Field orientation="horizontal">
-          <Checkbox
-            id="agent-wsl"
-            checked={agent.wsl}
-            onCheckedChange={(wsl) => {
-              // WSL has its own Pi, with its own models.
-              setCatalog(null);
-              save({ ...agent, wsl });
+        <div className="col-span-2">
+          <ChoiceField
+            id="agent-model"
+            label="Model"
+            value={agent.model ?? DEFAULT}
+            options={models}
+            onChange={(value) => {
+              const next = value === DEFAULT ? null : value;
+              const nextLevels = choices.find(
+                (choice) => choice.id === (next ?? start?.model),
+              )?.thinkingLevels;
+              const keepThinking = agent.thinking && nextLevels?.includes(agent.thinking);
+              save({ ...agent, model: next, thinking: keepThinking ? agent.thinking : null });
             }}
           />
-          <FieldLabel htmlFor="agent-wsl">Run in WSL</FieldLabel>
-        </Field>
-      )}
+        </div>
+        <div className="col-span-2">
+          <ChoiceField
+            id="agent-thinking"
+            label="Thinking"
+            value={agent.thinking ?? DEFAULT}
+            options={thinking}
+            onChange={(value) => save({ ...agent, thinking: value === DEFAULT ? null : value })}
+          />
+        </div>
+      </div>
       <Field>
         <FieldLabel htmlFor="agent-folder">Folder</FieldLabel>
-        <Input
-          id="agent-folder"
-          value={folder}
-          onChange={(event) => setFolder(event.target.value)}
-          onBlur={() =>
-            folder.trim() && folder !== agent.folder && save({ ...agent, folder: folder.trim() })
-          }
-        />
+        <div className="flex gap-2">
+          <Input
+            id="agent-folder"
+            value={folder}
+            onChange={(event) => setFolder(event.target.value)}
+            onBlur={() =>
+              folder.trim() && folder !== agent.folder && save({ ...agent, folder: folder.trim() })
+            }
+          />
+          <Button
+            variant="outline"
+            onClick={() =>
+              void bridge.pickFolder().then((picked) => {
+                if (!picked) return;
+                setFolder(picked);
+                save({ ...agent, folder: picked });
+              })
+            }
+          >
+            Choose…
+          </Button>
+        </div>
         <FieldDescription>
-          Where new sessions work, like ~/src{agent.wsl && " inside WSL"}.
+          Where new sessions work, like ~/src{wsl && " inside WSL"}.
         </FieldDescription>
       </Field>
       {catalog === "loading" && <p className="text-muted-foreground">Asking Pi for its models…</p>}
+      {loaded && sessionModel && (
+        <p className="text-muted-foreground">
+          New sessions use {nameOf(sessionModel)}
+          {sessionThinking && ` with ${sessionThinking} thinking`}.
+        </p>
+      )}
       {problem && (
         <p role="status" className="text-destructive">
           {problem}

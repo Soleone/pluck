@@ -11,7 +11,7 @@ export type Action = {
   run: string;
   /** Set on actions that start an agent session on this prompt instead of running a script. */
   agent: string | null;
-  output: "show" | "copy" | "notify";
+  output: "show" | "copy" | "notify" | "replace";
 };
 
 /** Unset model and thinking use the harness's own defaults. */
@@ -19,21 +19,31 @@ export type AgentSettings = {
   harness: "pi";
   model: string | null;
   thinking: string | null;
-  /** Where new sessions run, inside WSL when `wsl` is set. */
+  /** Where new sessions run, inside WSL when the settings say so. */
   folder: string;
-  /** Windows only: run the harness installed in WSL. */
-  wsl: boolean;
 };
 
-export type AgentSession = { id: string; title: string; folder: string; wsl: boolean };
+export type AgentSession = {
+  id: string;
+  title: string;
+  folder: string;
+  wsl: boolean;
+  /** When it last finished a run, in ms since 1970; 0 when unknown. */
+  lastActive: number;
+};
 
 /** A record from a session's harness, or its exit with the reason. */
 type AgentEvent = { id: string; record: PiRecord | null; exited: string | null };
 
-/** A menu action asking the agents window to start a session. */
-type AgentRequest = { title: string; prompt: string };
+/** The menu asking the agents window to send a prompt, to `session` or else a new session. */
+type AgentRequest = { title: string; prompt: string; session: string | null };
 
-export type AgentCatalog = { models: PiModel[]; settings: PiSettings | null };
+/** `start` is the model, as `provider/id`, and thinking level Pi starts a new session with. */
+export type AgentCatalog = {
+  models: PiModel[];
+  settings: PiSettings | null;
+  start: { model: string; thinking: string } | null;
+};
 
 /** What the menu shows for one trigger. */
 export type Opened = {
@@ -42,11 +52,15 @@ export type Opened = {
   clipboard: boolean;
   app: string;
   title: string;
+  /** The page the text was copied from, when the browser says so; else empty. */
+  url: string;
   actions: Action[];
   problems: string[];
+  /** The most recently active agent session, which agent actions can continue. */
+  lastSession: AgentSession | null;
 };
 
-/** Progress of a `show` action; `run` is the number the menu passed to `run()`. */
+/** Progress of a `show` or `replace` action; `run` is the number the menu passed to `run()`. */
 type RunEvent = { run: number; line: string | null; done: boolean; error: string | null };
 
 /** What the home screen shows. */
@@ -57,8 +71,10 @@ export type HomeState = {
   actions: Action[];
   problems: string[];
   agent: AgentSettings;
-  /** Only Windows has the WSL choice. */
-  windows: boolean;
+  platform: "windows" | "macos" | "linux";
+  /** Windows only: scripts and agents run inside WSL. */
+  wsl: boolean;
+  autostart: boolean;
 };
 
 export type Update = { version: string; install(): Promise<void> };
@@ -67,12 +83,21 @@ type Bridge = {
   /** Calls the listener each time the menu opens. Returns a function that stops listening. */
   onOpen(listener: (opened: Opened) => void): () => void;
   onRun(listener: (event: RunEvent) => void): () => void;
-  run(actionId: string, run: number): Promise<void>;
+  /** Agent actions go to the menu's last session when `continueSession` is set. */
+  run(actionId: string, run: number, continueSession: boolean): Promise<void>;
+  /** Asks the agent `question` about the menu's text. */
+  ask(question: string, continueSession: boolean): Promise<void>;
+  /** Puts `text` in place of the selection, or on the clipboard when the text came from there. */
+  replace(text: string): Promise<void>;
   dismiss(): Promise<void>;
   homeState(): Promise<HomeState>;
   /** Rejects with the reason when the hotkey can't be used; the previous one stays. */
   setHotkey(hotkey: string): Promise<void>;
   pauseHotkey(): Promise<void>;
+  setWsl(wsl: boolean): Promise<void>;
+  setAutostart(enabled: boolean): Promise<void>;
+  /** A folder for agent sessions, named as WSL names it when they run there; null when cancelled. */
+  pickFolder(): Promise<string | null>;
   openConfigFolder(): Promise<void>;
   editConfig(): Promise<void>;
   /** A newer release, or null when current, offline or a development build. */
@@ -84,6 +109,8 @@ type Bridge = {
   /** Runs session `id`, adding it to the list when it is new. `title` is only used then. */
   agentStart(id: string, title: string): Promise<void>;
   agentSend(id: string, record: object): Promise<void>;
+  /** Stops the session and takes it off the list; the harness keeps its own copy. */
+  agentRemove(id: string): Promise<void>;
   onAgent(listener: (event: AgentEvent) => void): () => void;
   onAgentRequest(listener: (request: AgentRequest) => void): () => void;
   showAgents(): Promise<void>;
@@ -97,11 +124,17 @@ function subscribe<T>(event: string, listener: (payload: T) => void) {
 const native: Bridge = {
   onOpen: (listener) => subscribe("pluck://open", listener),
   onRun: (listener) => subscribe("pluck://run", listener),
-  run: (actionId, run) => invoke("run_action", { id: actionId, run }),
+  run: (actionId, run, continueSession) =>
+    invoke("run_action", { id: actionId, run, continueSession }),
+  ask: (question, continueSession) => invoke("ask", { question, continueSession }),
+  replace: (text) => invoke("replace", { text }),
   dismiss: () => invoke("dismiss"),
   homeState: () => invoke("home_state"),
   setHotkey: (hotkey) => invoke("set_hotkey", { hotkey }),
   pauseHotkey: () => invoke("pause_hotkey"),
+  setWsl: (wsl) => invoke("set_wsl", { wsl }),
+  setAutostart: (enabled) => invoke("set_autostart", { enabled }),
+  pickFolder: () => invoke("pick_folder"),
   openConfigFolder: () => invoke("open_config_folder"),
   editConfig: () => invoke("edit_config"),
   async availableUpdate() {
@@ -122,19 +155,21 @@ const native: Bridge = {
   agentSessions: () => invoke("agent_sessions"),
   agentStart: (id, title) => invoke("agent_start", { id, title }),
   agentSend: (id, record) => invoke("agent_send", { id, record: JSON.stringify(record) }),
+  agentRemove: (id) => invoke("agent_remove", { id }),
   onAgent: (listener) => subscribe("pluck://agent", listener),
   onAgentRequest: (listener) => subscribe("pluck://agent-request", listener),
   showAgents: () => invoke("show_agents"),
 };
 
 const ps = (script: string) =>
-  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\${script}.ps1`;
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/${script}.ps1`;
 
 const sample: Opened = {
   text: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
   clipboard: false,
   app: "chrome",
   title: "Ludwig Wittgenstein - Wikipedia",
+  url: "https://en.wikipedia.org/wiki/Ludwig_Wittgenstein",
   actions: [
     {
       id: "explain",
@@ -169,9 +204,10 @@ const sample: Opened = {
       output: "notify",
     },
     { id: "count", name: "Count words", key: "w", run: ps("count"), agent: null, output: "show" },
-    { id: "upper", name: "Uppercase", key: "u", run: ps("upper"), agent: null, output: "copy" },
+    { id: "upper", name: "Uppercase", key: "u", run: ps("upper"), agent: null, output: "replace" },
   ],
   problems: [],
+  lastSession: null,
 };
 
 const cannedLines = [
@@ -227,31 +263,31 @@ const catalog: AgentCatalog = {
     defaultModel: "claude-sonnet-5-5",
     defaultThinkingLevel: "medium",
     enabledModels: ["anthropic/*"],
+    modelThinkingLevels: { "anthropic/claude-opus-5-5": "high" },
   },
+  start: { model: "anthropic/claude-sonnet-5-5", thinking: "medium" },
 };
 
 /** `pnpm dev:web`: sample text and actions, canned output, and the menu reopens after closing. */
 function prototype(): Bridge {
   let hotkey = "Ctrl+Alt+Space";
-  let agent: AgentSettings = {
-    harness: "pi",
-    model: null,
-    thinking: null,
-    folder: "~",
-    wsl: false,
-  };
-  const sessions: AgentSession[] = [
+  let agent: AgentSettings = { harness: "pi", model: null, thinking: null, folder: "~" };
+  let wsl = false;
+  let autostart = true;
+  let sessions: AgentSession[] = [
     {
       id: "sample",
       title: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
       folder: "~",
       wsl: false,
+      lastActive: Date.now() - 3 * 60_000,
     },
   ];
   let openListener: ((opened: Opened) => void) | undefined;
   let runListener: ((event: RunEvent) => void) | undefined;
   let agentListener: ((event: AgentEvent) => void) | undefined;
-  const dismiss = async () => void setTimeout(() => openListener?.(sample), 500);
+  const dismiss = async () =>
+    void setTimeout(() => openListener?.({ ...sample, lastSession: sessions[0] ?? null }), 500);
   const reply = (id: string, records: PiRecord[]) =>
     records.forEach((record, index) =>
       setTimeout(() => agentListener?.({ id, record, exited: null }), 250 * (index + 1)),
@@ -260,7 +296,7 @@ function prototype(): Bridge {
   return {
     onOpen(listener) {
       openListener = listener;
-      listener(sample);
+      listener({ ...sample, lastSession: sessions[0] ?? null });
       return () => (openListener = undefined);
     },
     onRun(listener) {
@@ -268,8 +304,13 @@ function prototype(): Bridge {
       return () => (runListener = undefined);
     },
     async run(actionId, run) {
-      if (sample.actions.find((action) => action.id === actionId)?.output !== "show")
-        return dismiss();
+      const output = sample.actions.find((action) => action.id === actionId)?.output;
+      if (output === "replace")
+        return void setTimeout(
+          () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
+          300,
+        );
+      if (output !== "show") return dismiss();
       const events = [
         ...cannedLines.map((line) => ({ line, done: false })),
         { line: null, done: true },
@@ -278,6 +319,8 @@ function prototype(): Bridge {
         setTimeout(() => runListener?.({ run, error: null, ...event }), 300 * (index + 1)),
       );
     },
+    ask: dismiss,
+    replace: dismiss,
     dismiss,
     homeState: async () => ({
       version: "0.1.0",
@@ -286,7 +329,9 @@ function prototype(): Bridge {
       actions: sample.actions,
       problems: [],
       agent,
-      windows: true,
+      platform: "windows",
+      wsl,
+      autostart,
     }),
     async setHotkey(next) {
       if (next === "Super+Space")
@@ -294,6 +339,13 @@ function prototype(): Bridge {
       hotkey = next;
     },
     pauseHotkey: async () => {},
+    async setWsl(next) {
+      wsl = next;
+    },
+    async setAutostart(next) {
+      autostart = next;
+    },
+    pickFolder: async () => "/home/you/src",
     openConfigFolder: async () => {},
     editConfig: async () => {},
     availableUpdate: async () => ({
@@ -307,11 +359,28 @@ function prototype(): Bridge {
     agentSessions: async () => [...sessions],
     async agentStart(id, title) {
       if (!sessions.some((session) => session.id === id))
-        sessions.unshift({ id, title, folder: agent.folder, wsl: agent.wsl });
+        sessions.unshift({ id, title, folder: agent.folder, wsl, lastActive: Date.now() });
+    },
+    async agentRemove(id) {
+      sessions = sessions.filter((session) => session.id !== id);
     },
     async agentSend(id, record) {
       const command = record as { type: string; message?: string };
-      if (command.type === "prompt") reply(id, cannedRun(command.message ?? ""));
+      if (command.type === "prompt") {
+        // A prompt mentioning a dialog shows how an extension's question looks.
+        const dialog = {
+          type: "extension_ui_request",
+          id: "sample-dialog",
+          method: "confirm",
+          title: "Allow this command?",
+          message: "rm -rf build",
+        } as unknown as PiRecord; // Its `message` is text, not a chat message.
+        const run = cannedRun(command.message ?? "");
+        reply(id, command.message?.includes("dialog") ? [dialog, ...run] : run);
+        sessions = sessions.map((session) =>
+          session.id === id ? { ...session, lastActive: Date.now() } : session,
+        );
+      }
       if (command.type === "abort") reply(id, [{ type: "agent_settled" }]);
       if (command.type === "get_messages") {
         const messages =

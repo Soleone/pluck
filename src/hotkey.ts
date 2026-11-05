@@ -18,7 +18,13 @@ export function hotkeyFromKeyDown(event: KeyboardEvent): string | null {
   return [...MODIFIERS.filter(([, flag]) => event[flag]).map(([name]) => name), key].join("+");
 }
 
-/** The hotkey's keys as Windows names them. */
-export function hotkeyKeys(hotkey: string): string[] {
-  return hotkey.split("+").map((key) => (key === "Super" ? "Win" : key));
+const KEY_NAMES: Record<string, Record<string, string>> = {
+  windows: { Super: "Win" },
+  macos: { Super: "Cmd", Alt: "Option" },
+  linux: {},
+};
+
+/** The hotkey's keys as the platform names them. */
+export function hotkeyKeys(hotkey: string, platform: string): string[] {
+  return hotkey.split("+").map((key) => KEY_NAMES[platform]?.[key] ?? key);
 }

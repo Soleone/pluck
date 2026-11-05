@@ -2,7 +2,7 @@ import { expect, test } from "vite-plus/test";
 import {
   agentMessages,
   applyRecord,
-  dialogReply,
+  dialogOf,
   emptyTranscript,
   modelChoices,
   type PiModel,
@@ -99,13 +99,10 @@ test("agent.reopen: get_messages replaces the history and hides system messages"
   ]);
 });
 
-test("agent.dialogs: dialogs are declined, notifications are ignored", () => {
-  expect(dialogReply({ type: "extension_ui_request", id: "d", method: "confirm" })).toEqual({
-    type: "extension_ui_response",
-    id: "d",
-    cancelled: true,
-  });
-  expect(dialogReply({ type: "extension_ui_request", id: "n", method: "notify" })).toBeNull();
+test("agent.dialogs: dialogs are shown, notifications are not", () => {
+  const confirm = { type: "extension_ui_request", id: "d", method: "confirm", title: "Allow?" };
+  expect(dialogOf(confirm)).toMatchObject({ id: "d", method: "confirm", title: "Allow?" });
+  expect(dialogOf({ type: "extension_ui_request", id: "n", method: "notify" })).toBeNull();
 });
 
 const models: PiModel[] = [
@@ -132,4 +129,11 @@ test("settings.agent-thinking: levels are the ones the model supports", () => {
   const [sonnet, gpt4o] = modelChoices(models, null);
   expect(sonnet?.thinkingLevels).toEqual(["minimal", "low", "medium", "high", "xhigh", "max"]);
   expect(gpt4o?.thinkingLevels).toEqual(["off"]);
+});
+
+test("settings.agent-thinking: each model shows the level Pi starts it with", () => {
+  const settings = { defaultThinkingLevel: "high", modelThinkingLevels: { "openai/gpt-5": "max" } };
+  const [sonnet, gpt4o, gpt5] = modelChoices(models, settings);
+  expect([sonnet?.thinking, gpt4o?.thinking, gpt5?.thinking]).toEqual(["high", "off", "max"]);
+  expect(modelChoices(models, null)[0]?.thinking).toBe("medium");
 });
