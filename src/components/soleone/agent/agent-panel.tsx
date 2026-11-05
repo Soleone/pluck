@@ -1,7 +1,8 @@
 import { memo, useId, useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
-import { ArrowUp, Square, TextQuote, Wrench } from "lucide-react"
+import { ArrowUp, Globe, Square, TextQuote, Wrench } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import {
@@ -24,7 +25,19 @@ export type AgentTool = {
   label: string
   status: "running" | "complete" | "error"
   output?: string
+  /** Web pages the step searched or read, shown as site chips under its title. */
+  sources?: AgentSource[]
   data?: unknown
+}
+
+export type AgentSource = { url: string; title?: string }
+
+/** The http(s) links in a tool's output, once each, for hosts whose tools return links as text. */
+export function sourcesIn(text: string): AgentSource[] {
+  const urls = text.match(/https?:\/\/[^\s"'<>()[\]]+/g) ?? []
+  return [...new Set(urls.map((url) => url.replace(/[.,;:!?]+$/, "")))]
+    .filter((url) => URL.canParse(url))
+    .map((url) => ({ url }))
 }
 
 /** Text a user message is about, such as a selection, shown above the message and open at first. */
@@ -92,21 +105,68 @@ function blocksOf(messages: AgentMessage[], renderTool?: (tool: AgentTool) => Re
   return blocks
 }
 
+function SiteIcon({ host }: { host: string }) {
+  const [missing, setMissing] = useState(false)
+  if (missing) return <Globe />
+  return (
+    <img
+      src={`https://icons.duckduckgo.com/ip3/${host}.ico`}
+      alt=""
+      className="size-3 shrink-0 rounded-sm"
+      onError={() => setMissing(true)}
+    />
+  )
+}
+
+const shownSites = 6
+
+/** One chip per site, so ten results from two sites read as two. */
+function Sources({ sources }: { sources: AgentSource[] }) {
+  const sites = new Map<string, AgentSource>()
+  for (const source of sources) {
+    const host = new URL(source.url).hostname
+    if (!sites.has(host)) sites.set(host, source)
+  }
+  const hidden = sites.size - shownSites
+  return (
+    <ul aria-label="Sources" className="flex flex-wrap gap-1 pl-6">
+      {[...sites].slice(0, shownSites).map(([host, source]) => (
+        <li key={host}>
+          <Badge
+            variant="outline"
+            render={<a href={source.url} target="_blank" rel="noopener noreferrer" title={source.title ?? source.url} />}
+          >
+            <SiteIcon host={host} />
+            {host.replace(/^www\./, "")}
+          </Badge>
+        </li>
+      ))}
+      {hidden > 0 && <li><Badge variant="secondary">+{hidden}</Badge></li>}
+    </ul>
+  )
+}
+
 function ToolStep({ tool }: { tool: AgentTool }) {
   const line = (
     <TraceLine status={tool.status === "complete" ? undefined : tool.status}>
-      <TraceIcon><Wrench /></TraceIcon>
+      <TraceIcon>{tool.sources ? <Globe /> : <Wrench />}</TraceIcon>
       <TraceTitle>{tool.label}</TraceTitle>
     </TraceLine>
   )
-  if (!tool.output) return line
-  return (
+  const step = tool.output ? (
     <TraceCollapsible>
       <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
       <TraceCollapsibleContent>
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{tool.output}</pre>
       </TraceCollapsibleContent>
     </TraceCollapsible>
+  ) : line
+  if (!tool.sources?.length) return step
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      {step}
+      <Sources sources={tool.sources} />
+    </div>
   )
 }
 

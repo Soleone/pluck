@@ -162,3 +162,49 @@ test("agent.model: get_state sets the model and thinking level the session runs 
   const record = { type: "response", command: "get_state", success: true, data: state };
   expect(replay([record]).model).toEqual({ name: "GPT", thinking: "high" });
 });
+
+test("agent.web: searches name their queries and show the sites they found", () => {
+  const search = {
+    type: "toolCall" as const,
+    id: "s1",
+    name: "web_search",
+    arguments: { queries: ["tauri opener", "tauri links"] },
+  };
+  const running = replay([
+    { type: "agent_start" },
+    { type: "message_start", message: { role: "assistant", content: [search] } },
+  ]);
+  expect(agentMessages(running)[0]?.tools).toMatchObject([
+    { label: "Searching for “tauri opener” and 1 more", sources: undefined },
+  ]);
+  const found = text(
+    "Sources\n- https://v2.tauri.app/plugin/opener/\n- https://github.com/tauri-apps.",
+  );
+  const done = applyRecord(running, {
+    type: "message_start",
+    message: { role: "toolResult", toolCallId: "s1", content: found, isError: false },
+  });
+  expect(agentMessages(done)[0]?.tools?.[0]?.sources).toEqual([
+    { url: "https://v2.tauri.app/plugin/opener/" },
+    { url: "https://github.com/tauri-apps" },
+  ]);
+});
+
+test("agent.web: pages being read show their sites while they load", () => {
+  const read = {
+    type: "toolCall" as const,
+    id: "r1",
+    name: "fetch_content",
+    arguments: { urls: ["https://example.com/a", "https://docs.rs/b"] },
+  };
+  const transcript = replay([
+    { type: "agent_start" },
+    { type: "message_start", message: { role: "assistant", content: [read] } },
+  ]);
+  expect(agentMessages(transcript)[0]?.tools).toMatchObject([
+    {
+      label: "Reading example.com and 1 more",
+      sources: [{ url: "https://example.com/a" }, { url: "https://docs.rs/b" }],
+    },
+  ]);
+});

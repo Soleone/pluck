@@ -221,19 +221,27 @@ const cannedLines = [
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 
-/** What Pi sends for one prompt: a bash step, then a streamed answer. */
+/** What Pi sends for one prompt: a web search, then a streamed answer. */
 function cannedRun(prompt: string): PiRecord[] {
   const user = { role: "user" as const, content: text(prompt) };
   const call = {
     type: "toolCall" as const,
-    id: "count",
-    name: "bash",
-    arguments: { command: "wc -w" },
+    id: "search",
+    name: "web_search",
+    arguments: { queries: ["Tractatus limits of my language", "Wittgenstein language and world"] },
   };
   const result = {
     role: "toolResult" as const,
-    toolCallId: "count",
-    content: text("9"),
+    toolCallId: "search",
+    content: text(
+      [
+        "Sources",
+        "- https://en.wikipedia.org/wiki/Tractatus_Logico-Philosophicus",
+        "- https://plato.stanford.edu/entries/wittgenstein/",
+        "- https://www.gutenberg.org/ebooks/5740",
+        "- https://www.britannica.com/biography/Ludwig-Wittgenstein",
+      ].join("\n"),
+    ),
     isError: false,
   };
   return [
