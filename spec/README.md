@@ -103,10 +103,10 @@ Each action's `output` says what happens with the script's stdout, or the agent'
 
 | Rule             | When                                      | Then                                                                                                                                                                          |
 | ---------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `output.show`    | `output = "show"`                         | A small panel opens at the menu's position and streams stdout as it arrives, its title shimmering until a check marks it done; `Esc` closes it                                |
+| `output.show`    | `output = "show"`                         | A small panel opens at the menu's position and streams stdout as it arrives, its title shimmering until a check marks it done; `Esc` or a click on its hint closes it         |
 | `output.copy`    | `output = "copy"`                         | The menu says the action started and closes; when it's done, the output is put on the clipboard and a short confirmation appears                                              |
 | `output.notify`  | `output = "notify"`                       | The menu says the action started, closes, and it runs in the background; the script's first line of stdout, or the agent's whole reply (or "Done"), appears as a notification |
-| `output.replace` | `output = "replace"`                      | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels                              |
+| `output.replace` | `output = "replace"`                      | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels. Both hints are clickable    |
 | `output.session` | `output = "session"` on an `agent` action | It opens an agent session (`action.agent`); on a script it's a config problem                                                                                                 |
 | `output.default` | No `output` is given                      | It is `notify` for a script and `session` for an `agent` action; an `agent` action's `interactive = false` means `show`                                                       |
 

@@ -173,14 +173,16 @@ export function Popup() {
             {problem}
           </p>
         ))}
-        <p className="text-xs text-muted-foreground">
+        <p className="flex gap-3 text-xs text-muted-foreground">
           {replacement !== null && (
-            <>
+            <button type="button" onClick={() => void bridge.replace(replacement)}>
               <Kbd>Enter</Kbd>{" "}
-              {opened.source === "selection" ? "to replace the selection" : "to copy"} ·{" "}
-            </>
+              {opened.source === "selection" ? "to replace the selection" : "to copy"}
+            </button>
           )}
-          <Kbd>Esc</Kbd> to {replacement !== null ? "cancel" : "close"}
+          <button type="button" onClick={() => void bridge.dismiss()}>
+            <Kbd>Esc</Kbd> to {replacement !== null ? "cancel" : "close"}
+          </button>
         </p>
       </div>
     );
