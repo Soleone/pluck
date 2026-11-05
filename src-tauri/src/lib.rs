@@ -9,7 +9,6 @@ use grab::Target;
 use serde::Serialize;
 use std::{
   path::PathBuf,
-  process::Child,
   sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
@@ -226,42 +225,44 @@ fn run_action(
   run: u32,
   continue_session: bool,
 ) -> Result<(), String> {
-  let (action, child) = {
+  let (action, produce): (Action, Box<Produce>) = {
     let session = session.lock().unwrap();
     let opened = &session.opened;
     let action = opened.actions.iter().find(|action| action.id == id).cloned().ok_or("Unknown action")?;
     if let Some(prompt) = &action.agent {
       let prompt = agent_prompt(prompt, opened);
-      if !action.interactive {
-        thread::spawn(move || show(&app, run, |on_line| one_off(&app, &action, &prompt, on_line)));
+      if action.output == Output::Session {
+        let request = AgentRequest {
+          model: action.model.clone(),
+          thinking: action.thinking.clone(),
+          ..agent_request(title_of(&opened.text), prompt, opened, continue_session)
+        };
+        drop(session);
+        send_to_agents(&app, request);
         return Ok(());
       }
-      let request = AgentRequest {
-        model: action.model.clone(),
-        thinking: action.thinking.clone(),
-        ..agent_request(title_of(&opened.text), prompt, opened, continue_session)
-      };
-      drop(session);
-      send_to_agents(&app, request);
-      return Ok(());
+      let (app, prompt_action) = (app.clone(), action.clone());
+      (action, Box::new(move |on_text: &mut dyn FnMut(String)| one_off(&app, &prompt_action, &prompt, on_text)))
+    } else {
+      let mut env = vec![("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
+      if !opened.url.is_empty() {
+        env.push(("PLUCK_URL", opened.url.as_str()));
+      }
+      let dir = config_dir(&app);
+      let wsl = config::settings(&dir).wsl;
+      let child = action::spawn(&action.run, wsl, &dir, &opened.text, &env).map_err(|error| error.to_string())?;
+      (action, Box::new(move |on_line: &mut dyn FnMut(String)| action::stream(child, on_line)))
     }
-    let mut env = vec![("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
-    if !opened.url.is_empty() {
-      env.push(("PLUCK_URL", opened.url.as_str()));
-    }
-    let dir = config_dir(&app);
-    let wsl = config::settings(&dir).wsl;
-    let child = action::spawn(&action.run, wsl, &dir, &opened.text, &env).map_err(|error| error.to_string())?;
-    (action, child)
   };
   match action.output {
     Output::Show | Output::Replace => {
-      thread::spawn(move || show(&app, run, |on_line| action::stream(child, on_line)));
+      thread::spawn(move || show(&app, run, produce));
     }
     Output::Copy | Output::Notify => {
       hide_menu(&app);
-      thread::spawn(move || finish_in_background(&app, &action, child));
+      thread::spawn(move || finish_in_background(&app, &action, produce));
     }
+    Output::Session => unreachable!("only prompts open a session, and they returned above"),
   }
   Ok(())
 }
@@ -301,7 +302,7 @@ fn agent_request(title: String, prompt: String, opened: &Opened, continue_sessio
   AgentRequest { title, prompt, session, model: None, thinking: None }
 }
 
-/// Runs a prompt action that isn't interactive: one reply from the agent, without a session.
+/// Runs a prompt action that doesn't open a session: one reply from the agent.
 fn one_off(app: &AppHandle, action: &Action, prompt: &str, on_text: impl FnMut(String)) -> Result<(), String> {
   let settings = config::settings(&config_dir(app));
   let (model, thinking) = session_model(action.model.clone(), action.thinking.clone(), &settings.agent);
@@ -522,8 +523,11 @@ fn title_of(text: &str) -> String {
   }
 }
 
+/// Runs an action's script or one-off prompt, passing on its output as it arrives.
+type Produce = dyn FnOnce(&mut dyn FnMut(String)) -> Result<(), String> + Send;
+
 /// Streams what `produce` passes on into the menu's panel.
-fn show(app: &AppHandle, run: u32, produce: impl FnOnce(&mut dyn FnMut(String)) -> Result<(), String>) {
+fn show(app: &AppHandle, run: u32, produce: Box<Produce>) {
   let emit = |event: RunEvent| {
     let _ = app.emit("pluck://run", event);
   };
@@ -531,20 +535,21 @@ fn show(app: &AppHandle, run: u32, produce: impl FnOnce(&mut dyn FnMut(String)) 
   emit(RunEvent { run, line: None, done: true, error: result.err() });
 }
 
-fn finish_in_background(app: &AppHandle, action: &Action, child: Child) {
+/// Copies the output, or notifies with a script's first line or the agent's whole reply.
+fn finish_in_background(app: &AppHandle, action: &Action, produce: Box<Produce>) {
   let failed = format!("{} failed", action.name);
-  let stdout = match action::finish(child) {
-    Ok(stdout) => stdout,
-    Err(error) => return notify(app, &failed, &error),
-  };
-  if let Output::Copy = action.output {
-    return match grab::set_clipboard(stdout.trim_end_matches(['\r', '\n'])) {
+  let mut output = String::new();
+  if let Err(error) = produce(&mut |text| output.push_str(&text)) {
+    return notify(app, &failed, &error);
+  }
+  if action.output == Output::Copy {
+    return match grab::set_clipboard(output.trim_end_matches(['\r', '\n'])) {
       Ok(()) => notify(app, &action.name, "Copied"),
       Err(error) => notify(app, &failed, &error),
     };
   }
-  let first_line = stdout.lines().map(str::trim).find(|line| !line.is_empty());
-  notify(app, &action.name, first_line.unwrap_or("Done"));
+  let body = if action.agent.is_some() { output.trim() } else { output.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("") };
+  notify(app, &action.name, if body.is_empty() { "Done" } else { body });
 }
 
 fn hide_menu(app: &AppHandle) {

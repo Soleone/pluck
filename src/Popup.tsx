@@ -16,15 +16,15 @@ import { Kbd } from "@/components/ui/kbd";
 const ASK = "pluck:ask";
 /** How long a picked row plays its press before the action runs and the menu moves on. */
 const PICK_MS = 160;
+/** How long the menu says an action started before it closes and the action runs in the background. */
+const STARTED_MS = 450;
 
-/** Scripts that show or replace output, and prompts that aren't interactive, answer in the menu. */
-const showsPanel = (action: Action) =>
-  action.agent ? !action.interactive : action.output === "show" || action.output === "replace";
+const showsPanel = (action: Action) => action.output === "show" || action.output === "replace";
+const runsInBackground = (action: Action) => action.output === "copy" || action.output === "notify";
 
 type Result = { action: Action; run: number; text: string; done: boolean; error: string | null };
 
-/** The menu that opens on the hotkey, and the panel a `show` or `replace` action, or a one-off
- * prompt, streams into. */
+/** The menu that opens on the hotkey, and the panel a `show` or `replace` action streams into. */
 export function Popup() {
   const [opened, setOpened] = useState<Opened | null>(null);
   const [openCount, setOpenCount] = useState(0);
@@ -35,6 +35,8 @@ export function Popup() {
   const [continueLast, setContinueLast] = useState(false);
   /** The row being picked: it plays its press, then the action runs. */
   const [picked, setPicked] = useState<string | null>(null);
+  /** A `copy` or `notify` action, confirmed for a moment before the menu closes. */
+  const [started, setStarted] = useState<Action | null>(null);
   const runCount = useRef(0);
   const input = useRef<HTMLInputElement>(null);
 
@@ -48,6 +50,7 @@ export function Popup() {
         setQuery("");
         setContinueLast(false);
         setPicked(null);
+        setStarted(null);
       }),
     [],
   );
@@ -97,6 +100,7 @@ export function Popup() {
 
   const fail = (failure: unknown) => {
     setPicked(null);
+    setStarted(null);
     setError(String(failure));
   };
   const lastSession = opened.lastSession;
@@ -112,8 +116,11 @@ export function Popup() {
   function start(action: Action) {
     pick(action.id, () => {
       const run = ++runCount.current;
+      const go = () => void bridge.run(action.id, run, continuing).catch(fail);
       if (showsPanel(action)) setResult({ action, run, text: "", done: false, error: null });
-      bridge.run(action.id, run, continuing).catch(fail);
+      if (!runsInBackground(action)) return go();
+      setStarted(action);
+      setTimeout(go, STARTED_MS);
     });
   }
 
@@ -138,6 +145,15 @@ export function Popup() {
   }
 
   const problems = error ? [...opened.problems, error] : opened.problems;
+
+  if (started) {
+    return (
+      <div data-menu-panel className="flex h-full items-center justify-center gap-2 text-sm">
+        <CircleCheck aria-hidden className="menu-done size-4 text-primary" />
+        {started.name} started
+      </div>
+    );
+  }
 
   if (result) {
     return (

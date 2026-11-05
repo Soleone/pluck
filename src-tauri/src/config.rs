@@ -26,17 +26,31 @@ const DEFAULT_FILES: [(&str, &str); 6] = [
   ("scripts/upper.sh", include_str!("../defaults/unix/scripts/upper.sh")),
 ];
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+/// What happens with a script's stdout or an agent's reply. `Session` is for prompts only: they
+/// open an agent session instead of getting one reply.
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Output {
+  Session,
   Show,
   Copy,
   Notify,
   Replace,
 }
 
-/// Runs `run` as a script, or with `agent` set, sends that prompt to the agent instead: in a
-/// session, or when not `interactive`, as a one-off reply shown in the menu.
+impl Output {
+  fn name(self) -> &'static str {
+    match self {
+      Output::Session => "session",
+      Output::Show => "show",
+      Output::Copy => "copy",
+      Output::Notify => "notify",
+      Output::Replace => "replace",
+    }
+  }
+}
+
+/// Runs `run` as a script, or with `agent` set, sends that prompt to the agent instead.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Action {
   pub id: String,
@@ -45,10 +59,9 @@ pub struct Action {
   #[serde(default)]
   pub run: String,
   pub agent: Option<String>,
+  /// Unset, it is `Notify` for scripts and `Session` for prompts.
   #[serde(default = "notify")]
   pub output: Output,
-  #[serde(default = "interactive")]
-  pub interactive: bool,
   /// Unset model and thinking use the agent settings.
   pub model: Option<String>,
   pub thinking: Option<String>,
@@ -56,10 +69,6 @@ pub struct Action {
 
 fn notify() -> Output {
   Output::Notify
-}
-
-fn interactive() -> bool {
-  true
 }
 
 #[derive(Default)]
@@ -94,7 +103,17 @@ pub fn load(dir: &Path) -> Config {
       Ok(action) if action.run.is_empty() && action.agent.is_none() => {
         config.problems.push(format!("pluck.toml, action {}: needs `run` or `agent`", index + 1));
       }
-      Ok(action) => config.actions.push(action),
+      Ok(action) if action.agent.is_none() && action.output == Output::Session => {
+        config.problems.push(format!("pluck.toml, action {}: only `agent` actions can open a session", index + 1));
+      }
+      Ok(mut action) => {
+        if action.agent.is_some() && entry.get("output").is_none() {
+          // `interactive = false` asked for a reply in the menu before prompts had an output.
+          let one_off = entry.get("interactive").and_then(toml::Value::as_bool) == Some(false);
+          action.output = if one_off { Output::Show } else { Output::Session };
+        }
+        config.actions.push(action);
+      }
       Err(error) => config.problems.push(format!("pluck.toml, action {}: {}", index + 1, error.message())),
     }
   }
@@ -132,18 +151,9 @@ pub fn save_actions(dir: &Path, actions: &[Action]) -> Result<(), String> {
     set(&mut table, "key", action.key.as_deref());
     set(&mut table, "run", Some(action.run.as_str()).filter(|_| script));
     set(&mut table, "agent", action.agent.as_deref());
-    let output = match action.output {
-      Output::Show => Some("show"),
-      Output::Copy => Some("copy"),
-      Output::Replace => Some("replace"),
-      Output::Notify => None,
-    };
-    set(&mut table, "output", output.filter(|_| script));
-    if script || action.interactive {
-      table.remove("interactive");
-    } else {
-      table.insert("interactive", value(false));
-    }
+    let default = if script { Output::Notify } else { Output::Session };
+    set(&mut table, "output", Some(action.output.name()).filter(|_| action.output != default));
+    table.remove("interactive");
     set(&mut table, "model", action.model.as_deref().filter(|_| !script));
     set(&mut table, "thinking", action.thinking.as_deref().filter(|_| !script));
     tables.push(table);
@@ -230,7 +240,7 @@ mod tests {
   use super::*;
 
   fn prompt(id: &str, text: &str) -> Action {
-    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Notify, interactive: true, model: None, thinking: None }
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None }
   }
 
   fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
@@ -270,18 +280,26 @@ mod tests {
 
   #[test]
   // menu-tab.agent
-  fn menu_tab_agent_keeps_model_thinking_and_one_off() {
+  fn menu_tab_agent_keeps_model_thinking_and_output() {
     let dir = dir_with("agent", "");
     let mut quick = prompt("q", "Define this.");
-    quick.interactive = false;
+    quick.output = Output::Notify;
     quick.model = Some("anthropic/claude-haiku-5-5".into());
     quick.thinking = Some("off".into());
     save_actions(&dir, &[quick, prompt("e", "Explain this.")]).unwrap();
 
     let text = fs::read_to_string(dir.join("pluck.toml")).unwrap();
-    assert_eq!(text.matches("interactive").count(), 1, "{text}");
-    let saved: Vec<_> = load(&dir).actions.into_iter().map(|action| (action.interactive, action.model, action.thinking)).collect();
-    assert_eq!(saved, [(false, Some("anthropic/claude-haiku-5-5".into()), Some("off".into())), (true, None, None)]);
+    assert_eq!(text.matches("output").count(), 1, "{text}");
+    let saved: Vec<_> = load(&dir).actions.into_iter().map(|action| (action.output, action.model, action.thinking)).collect();
+    assert!(saved == [(Output::Notify, Some("anthropic/claude-haiku-5-5".into()), Some("off".into())), (Output::Session, None, None)]);
+  }
+
+  #[test]
+  // output.default
+  fn prompts_open_a_session_unless_they_asked_for_a_reply_in_the_menu() {
+    let dir = dir_with("one-off", "[[action]]\nid = \"a\"\nname = \"A\"\nagent = \"x\"\n\n[[action]]\nid = \"b\"\nname = \"B\"\nagent = \"x\"\ninteractive = false\n");
+    let outputs: Vec<_> = load(&dir).actions.into_iter().map(|action| action.output).collect();
+    assert!(outputs == [Output::Session, Output::Show]);
   }
 
   #[test]

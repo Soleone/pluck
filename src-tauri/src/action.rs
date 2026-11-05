@@ -46,13 +46,6 @@ pub fn stream(mut child: Child, mut on_line: impl FnMut(String)) -> Result<(), S
   outcome(status, errors.join().unwrap_or_default())
 }
 
-/// Waits for the command and returns its stdout.
-pub fn finish(child: Child) -> Result<String, String> {
-  let output = child.wait_with_output().map_err(|error| error.to_string())?;
-  outcome(output.status, String::from_utf8_lossy(&output.stderr).into_owned())?;
-  Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
 fn outcome(status: ExitStatus, stderr: String) -> Result<(), String> {
   if status.success() {
     return Ok(());

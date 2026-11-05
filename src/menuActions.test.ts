@@ -9,7 +9,6 @@ const action = (id: string, key: string | null): Action => ({
   run: "",
   agent: "Explain this.",
   output: "notify",
-  interactive: true,
   model: null,
   thinking: null,
 });

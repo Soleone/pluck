@@ -7,7 +7,6 @@ import { newId, suggestKey } from "@/menuActions";
 import { ModelPicker, effectiveModel, loaded, piStart, type Catalog } from "@/ModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +27,7 @@ const OUTPUTS = [
   { value: "copy", label: "Copy to the clipboard" },
   { value: "notify", label: "Notify when done" },
 ];
+const PROMPT_OUTPUTS = [{ value: "session", label: "Open an agent session" }, ...OUTPUTS];
 
 /** The menu's actions, editable here and saved to pluck.toml. */
 export function MenuTab({
@@ -178,8 +178,12 @@ function ActionDialog({
   const [key, setKey] = useState<string | null>(action ? (action.key ?? "") : null);
   const [prompt, setPrompt] = useState(action?.agent ?? "");
   const [run, setRun] = useState(action?.run ?? "");
-  const [output, setOutput] = useState<Action["output"]>(action?.output ?? "show");
-  const [interactive, setInteractive] = useState(action?.interactive ?? true);
+  const [scriptOutput, setScriptOutput] = useState<Action["output"]>(
+    action && !action.agent ? action.output : "show",
+  );
+  const [promptOutput, setPromptOutput] = useState<Action["output"]>(
+    action?.agent ? action.output : "session",
+  );
   const [model, setModel] = useState({
     model: action?.model ?? null,
     thinking: action?.thinking ?? null,
@@ -207,8 +211,7 @@ function ActionDialog({
       key: shownKey.toLowerCase() || null,
       run: kind === "script" ? run.trim() : "",
       agent: kind === "prompt" ? prompt.trim() : null,
-      output: kind === "script" ? output : "notify",
-      interactive: kind === "script" || interactive,
+      output: kind === "script" ? scriptOutput : promptOutput,
       ...(kind === "prompt" ? model : { model: null, thinking: null }),
     }).then(onClose, (caught: unknown) => setProblem(String(caught)));
   }
@@ -277,21 +280,13 @@ function ActionDialog({
                 fallbackLabel="Settings"
                 onChange={setModel}
               />
-              <Field orientation="horizontal">
-                <Checkbox
-                  id="action-interactive"
-                  checked={interactive}
-                  onCheckedChange={setInteractive}
-                />
-                <div className="flex flex-col gap-0.5">
-                  <FieldLabel htmlFor="action-interactive">Interactive agent session</FieldLabel>
-                  <FieldDescription>
-                    {interactive
-                      ? "Opens a session you can keep talking to."
-                      : "Shows a one-off reply in the menu."}
-                  </FieldDescription>
-                </div>
-              </Field>
+              <ChoiceField
+                id="action-output"
+                label="Output"
+                value={promptOutput}
+                options={PROMPT_OUTPUTS}
+                onChange={(next) => setPromptOutput(next as Action["output"])}
+              />
             </>
           ) : (
             <>
@@ -310,9 +305,9 @@ function ActionDialog({
               <ChoiceField
                 id="action-output"
                 label="Output"
-                value={output}
+                value={scriptOutput}
                 options={OUTPUTS}
-                onChange={(next) => setOutput(next as Action["output"])}
+                onChange={(next) => setScriptOutput(next as Action["output"])}
               />
             </>
           )}

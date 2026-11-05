@@ -7,10 +7,11 @@
 #           PLUCK_TEXT, plus PLUCK_APP and PLUCK_TITLE.
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "replace" previews it and puts it in place of the selection on Enter,
-#           "notify" (the default) runs in the background and shows its first line.
+#           "notify" (the default for scripts) runs in the background and shows its first line.
 #   agent   instead of run: a prompt. The text is sent with it to an agent session, using the
 #           agent set in Settings.
-#   interactive  false shows the agent's reply in the menu instead of opening a session.
+#           With agent, output is for the agent's reply, and "session" (the default) opens a
+#           session instead; "notify" shows the whole reply.
 #   model, thinking  for agent actions, the model ("provider/id") and thinking level to use
 #           instead of the ones in Settings.
 

@@ -11,9 +11,9 @@ export type Action = {
   run: string;
   /** Set on actions that send this prompt to the agent instead of running a script. */
   agent: string | null;
-  output: "show" | "copy" | "notify" | "replace";
-  /** Agent actions only: false shows the agent's reply in the menu instead of opening a session. */
-  interactive: boolean;
+  /** What happens with the script's stdout or the agent's reply; `session`, for agent actions
+   * only, opens an agent session instead. */
+  output: "session" | "show" | "copy" | "notify" | "replace";
 } & SessionModel;
 
 /** For a new session; unset ones fall back to the agent settings. */
@@ -174,7 +174,7 @@ const native: Bridge = {
   showAgents: () => invoke("show_agents"),
 };
 
-const sessionDefaults = { interactive: true, model: null, thinking: null };
+const sessionDefaults = { model: null, thinking: null };
 
 const scriptAction = (
   id: string,
@@ -197,7 +197,7 @@ const promptAction = (id: string, name: string, key: string, agent: string): Act
   key,
   run: "",
   agent,
-  output: "notify",
+  output: "session",
   ...sessionDefaults,
 });
 
@@ -211,7 +211,7 @@ const sample: Opened = {
     promptAction("explain", "Explain", "e", "Explain this briefly."),
     {
       ...promptAction("define", "Define", "d", "Define this in one sentence."),
-      interactive: false,
+      output: "show",
       thinking: "off",
     },
     scriptAction("translate", "Translate to English", "t"),
@@ -328,7 +328,7 @@ function prototype(): Bridge {
     },
     async run(actionId, run) {
       const action = sample.actions.find((candidate) => candidate.id === actionId);
-      const output = action?.agent && !action.interactive ? "show" : action?.output;
+      const output = action?.output;
       if (output === "replace")
         return void setTimeout(
           () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
