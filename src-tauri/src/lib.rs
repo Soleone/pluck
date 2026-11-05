@@ -122,6 +122,7 @@ pub fn run() {
       open_config_folder,
       open_url,
       edit_config,
+      save_actions,
       set_agent_settings,
       agent_models,
       agent_sessions,
@@ -378,6 +379,12 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 fn edit_config(app: AppHandle) -> Result<(), String> {
   let file = config_dir(&app).join("pluck.toml");
   app.opener().open_path(file.to_string_lossy(), None::<&str>).map_err(|error| error.to_string())
+}
+
+/// The menu tab's edits: the whole action list, in menu order.
+#[tauri::command]
+fn save_actions(app: AppHandle, actions: Vec<Action>) -> Result<(), String> {
+  config::save_actions(&config_dir(&app), &actions)
 }
 
 #[tauri::command]

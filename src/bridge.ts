@@ -102,6 +102,8 @@ type Bridge = {
   /** Opens a web link in the default browser. */
   openUrl(url: string): Promise<void>;
   editConfig(): Promise<void>;
+  /** Writes the menu's actions, in order, to pluck.toml. Rejects while an entry there is invalid. */
+  saveActions(actions: Action[]): Promise<void>;
   /** A newer release, or null when current, offline or a development build. */
   availableUpdate(): Promise<Update | null>;
   setAgentSettings(agent: AgentSettings): Promise<void>;
@@ -140,6 +142,7 @@ const native: Bridge = {
   openConfigFolder: () => invoke("open_config_folder"),
   openUrl: (url) => invoke("open_url", { url }),
   editConfig: () => invoke("edit_config"),
+  saveActions: (actions) => invoke("save_actions", { actions }),
   async availableUpdate() {
     if (import.meta.env.DEV) return null;
     const update = await check().catch(() => null);
@@ -360,6 +363,9 @@ function prototype(): Bridge {
     openConfigFolder: async () => {},
     openUrl: async (url) => void window.open(url, "_blank", "noopener"),
     editConfig: async () => {},
+    async saveActions(actions) {
+      sample.actions = actions;
+    },
     availableUpdate: async () => ({
       version: "0.2.0",
       install: () => new Promise((resolve) => setTimeout(resolve, 1500)),

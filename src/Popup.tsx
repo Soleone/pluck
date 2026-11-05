@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { CircleCheck, Sparkles } from "lucide-react";
+import { ActionIcon } from "@/ActionIcon";
 import { ago } from "@/agent/ago";
 import { bridge, type Action, type Opened } from "@/bridge";
 import {
@@ -9,6 +11,11 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
+
+/** `picked` while the typed question is being asked. */
+const ASK = "pluck:ask";
+/** How long a picked row plays its press before the action runs and the menu moves on. */
+const PICK_MS = 160;
 
 type Result = { action: Action; run: number; text: string; done: boolean; error: string | null };
 
@@ -21,6 +28,8 @@ export function Popup() {
   const [query, setQuery] = useState("");
   /** Agent actions and questions go to the last session instead of a new one. */
   const [continueLast, setContinueLast] = useState(false);
+  /** The row being picked: it plays its press, then the action runs. */
+  const [picked, setPicked] = useState<string | null>(null);
   const runCount = useRef(0);
   const input = useRef<HTMLInputElement>(null);
 
@@ -33,6 +42,7 @@ export function Popup() {
         setError(null);
         setQuery("");
         setContinueLast(false);
+        setPicked(null);
       }),
     [],
   );
@@ -80,16 +90,31 @@ export function Popup() {
 
   if (!opened) return null;
 
-  const fail = (failure: unknown) => setError(String(failure));
+  const fail = (failure: unknown) => {
+    setPicked(null);
+    setError(String(failure));
+  };
   const lastSession = opened.lastSession;
   const continuing = continueLast && lastSession !== null;
   const lastAge = lastSession?.lastActive ? ago(lastSession.lastActive) : null;
 
+  function pick(id: string, then: () => void) {
+    if (picked) return;
+    setPicked(id);
+    setTimeout(then, PICK_MS);
+  }
+
   function start(action: Action) {
-    const run = ++runCount.current;
-    if (action.output === "show" || action.output === "replace")
-      setResult({ action, run, text: "", done: false, error: null });
-    bridge.run(action.id, run, continuing).catch(fail);
+    pick(action.id, () => {
+      const run = ++runCount.current;
+      if (action.output === "show" || action.output === "replace")
+        setResult({ action, run, text: "", done: false, error: null });
+      bridge.run(action.id, run, continuing).catch(fail);
+    });
+  }
+
+  function ask() {
+    pick(ASK, () => void bridge.ask(query.trim(), continuing).catch(fail));
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -112,10 +137,15 @@ export function Popup() {
 
   if (result) {
     return (
-      <div className="flex h-full flex-col gap-2 p-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          {result.action.name}
-          {result.done ? "" : " ..."}
+      <div data-menu-panel className="flex h-full flex-col gap-2 p-3">
+        <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <ActionIcon action={result.action} />
+          <span className={result.done ? undefined : "shimmer motion-reduce:shimmer-none"}>
+            {result.action.name}
+          </span>
+          {result.done && !result.error && (
+            <CircleCheck aria-label="Done" className="menu-done size-3.5 text-primary" />
+          )}
         </p>
         <p className="flex-1 overflow-auto text-sm whitespace-pre-wrap">{result.text}</p>
         {[result.error, ...problems].filter(Boolean).map((problem) => (
@@ -138,7 +168,7 @@ export function Popup() {
   const agentUsed = query.trim() !== "" || opened.actions.some((action) => action.agent);
 
   return (
-    <Command key={openCount} className="h-full">
+    <Command key={openCount} data-menu data-picking={picked !== null} className="h-full">
       <div className="px-2 pt-1 pb-2">
         <p className="line-clamp-2 text-sm">{opened.text}</p>
         {opened.clipboard ? (
@@ -162,18 +192,32 @@ export function Popup() {
       />
       <CommandList>
         {opened.actions.map((action) => (
-          <CommandItem key={action.id} value={action.name} onSelect={() => start(action)}>
+          <CommandItem
+            key={action.id}
+            value={action.name}
+            data-picked={picked === action.id || undefined}
+            onSelect={() => start(action)}
+          >
+            <ActionIcon action={action} />
             {action.name}
-            {action.key && <CommandShortcut>{action.key.toUpperCase()}</CommandShortcut>}
+            {action.key && (
+              <CommandShortcut>
+                <Kbd>{action.key.toUpperCase()}</Kbd>
+              </CommandShortcut>
+            )}
           </CommandItem>
         ))}
         {query.trim() && (
           <CommandItem
             forceMount
             value={`ask: ${query}`}
-            onSelect={() => void bridge.ask(query.trim(), continuing).catch(fail)}
+            data-picked={picked === ASK || undefined}
+            onSelect={ask}
           >
-            <span className="truncate">Ask: {query.trim()}</span>
+            <Sparkles aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">
+              <span className="text-muted-foreground">Ask</span> {query.trim()}
+            </span>
           </CommandItem>
         )}
       </CommandList>

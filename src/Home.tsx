@@ -9,8 +9,8 @@ import {
 import { modelChoices } from "@/agent/pi";
 import { AgentModelFields, type AgentModelChoice } from "@/components/soleone/agent";
 import { ChoiceField } from "@/ChoiceField";
+import { MenuTab } from "@/MenuTab";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
-import { Badge } from "@/components/ui/badge";
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,7 +23,7 @@ function errorText(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
 }
 
-/** The window behind the tray icon and the bare hotkey: settings and the configured scripts. */
+/** The window behind the tray icon and the bare hotkey: settings and the menu's actions. */
 export function Home() {
   const [state, setState] = useState<HomeState | null>(null);
 
@@ -49,7 +49,7 @@ export function Home() {
           <span className="flex items-center gap-2">
             <TabsList>
               <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="scripts">Scripts</TabsTrigger>
+              <TabsTrigger value="menu">Menu</TabsTrigger>
             </TabsList>
             <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
               <Bot />
@@ -75,8 +75,8 @@ export function Home() {
             <p className="text-muted-foreground">Pluck {state.version}</p>
           </div>
         </TabsContent>
-        <TabsContent value="scripts" className="min-h-0 overflow-auto">
-          <Scripts state={state} />
+        <TabsContent value="menu" className="min-h-0 overflow-auto">
+          <MenuTab state={state} onChange={(actions) => setState({ ...state, actions })} />
         </TabsContent>
       </Tabs>
     </div>
@@ -364,50 +364,6 @@ function AgentSetting({
         </p>
       )}
     </section>
-  );
-}
-
-function Scripts({ state }: { state: HomeState }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4">
-        <p className="truncate text-muted-foreground" title={state.configDir}>
-          The menu's actions, from pluck.toml in {state.configDir}
-        </p>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="outline" size="sm" onClick={() => void bridge.openConfigFolder()}>
-            Open folder
-          </Button>
-          <Button size="sm" onClick={() => void bridge.editConfig()}>
-            Edit pluck.toml
-          </Button>
-        </div>
-      </div>
-      {state.problems.map((problem) => (
-        <p key={problem} className="text-destructive">
-          {problem}
-        </p>
-      ))}
-      <ul className="flex flex-col divide-y rounded-lg border">
-        {state.actions.map((action) => (
-          <li key={action.id} className="flex items-center gap-3 px-3 py-2">
-            <span className="flex w-6 justify-center">
-              {action.key && <Kbd>{action.key.toUpperCase()}</Kbd>}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="font-medium">{action.name}</span>
-              <code
-                className="truncate text-xs text-muted-foreground"
-                title={action.agent ?? action.run}
-              >
-                {action.agent ?? action.run}
-              </code>
-            </div>
-            <Badge variant="secondary">{action.agent ? "agent" : action.output}</Badge>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

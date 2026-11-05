@@ -51,18 +51,21 @@ What pluck reads from the app you were in when the hotkey was pressed.
 
 ## Menu
 
-| Rule                | When                                                                      | Then                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `menu.open`         | The hotkey is pressed                                                     | The menu opens at the cursor, kept fully on screen, with the first action highlighted                                                   |
-| `menu.fast`         | The hotkey is pressed                                                     | The menu is visible within 100 ms                                                                                                       |
-| `menu.preview`      | The menu is open                                                          | A one-line preview of the selected text sits above the actions                                                                          |
-| `menu.accelerator`  | The menu is open and the key assigned to an action is pressed             | That action runs                                                                                                                        |
-| `menu.filter`       | A key without an assigned action is typed, or Space first                 | The list narrows to actions whose name matches the typed text; accelerators stop applying until the filter is cleared                   |
-| `menu.ask`          | Text is typed                                                             | The last row is "Ask: <text>"; picking it sends the question, with the selected text and where it came from, to an agent session        |
-| `menu.continue`     | The menu has agent actions or a question, and an agent session ran before | A line says agents start a new session, and how long ago the last session was active; `Tab` switches to continuing that session instead |
-| `menu.run`          | `Enter`, or a click on an action                                          | The highlighted or clicked action runs                                                                                                  |
-| `menu.close`        | `Esc`, or focus moves to another window                                   | The menu closes and nothing runs                                                                                                        |
-| `menu.focus-return` | The menu closes                                                           | Focus returns to the app that was active before                                                                                         |
+| Rule                | When                                                                      | Then                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `menu.open`         | The hotkey is pressed                                                     | The menu opens at the cursor, kept fully on screen, with the first action highlighted                                                                     |
+| `menu.fast`         | The hotkey is pressed                                                     | The menu is visible within 100 ms                                                                                                                         |
+| `menu.preview`      | The menu is open                                                          | A one-line preview of the selected text sits above the actions                                                                                            |
+| `menu.icons`        | The menu is open                                                          | Each action has an icon for what it does: a sparkle for prompts and Ask, else what happens with the output; the highlighted one is in the theme's primary |
+| `menu.arrive`       | The menu opens                                                            | Its rows arrive one after another within 200 ms, or at once with reduced motion; moving the highlight is instant                                          |
+| `menu.accelerator`  | The menu is open and the key assigned to an action is pressed             | That action runs                                                                                                                                          |
+| `menu.filter`       | A key without an assigned action is typed, or Space first                 | The list narrows to actions whose name matches the typed text; accelerators stop applying until the filter is cleared                                     |
+| `menu.ask`          | Text is typed                                                             | The last row is "Ask <text>"; picking it sends the question, with the selected text and where it came from, to an agent session                           |
+| `menu.continue`     | The menu has agent actions or a question, and an agent session ran before | A line says agents start a new session, and how long ago the last session was active; `Tab` switches to continuing that session instead                   |
+| `menu.run`          | `Enter`, or a click on an action                                          | The highlighted or clicked action runs                                                                                                                    |
+| `menu.pick`         | An action or question is picked                                           | Its row and key light up in the theme's primary while the other rows dim, and it runs 160 ms later                                                        |
+| `menu.close`        | `Esc`, or focus moves to another window                                   | The menu closes and nothing runs                                                                                                                          |
+| `menu.focus-return` | The menu closes                                                           | Focus returns to the app that was active before                                                                                                           |
 
 > Why: a single key runs its action, so a question that starts with one would run it; a leading Space makes it a question. Continuing a session is cheapest within a few minutes of its last run, while the model provider still caches its prompt, so the menu shows that time.
 
@@ -97,7 +100,7 @@ Each action's `output` says what happens with the script's stdout.
 
 | Rule             | When                 | Then                                                                                                                                             |
 | ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives; `Esc` closes it                                                     |
+| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives, its title shimmering until a check marks it done; `Esc` closes it   |
 | `output.copy`    | `output = "copy"`    | Stdout is put on the clipboard and a short confirmation appears                                                                                  |
 | `output.notify`  | `output = "notify"`  | The menu closes at once, the script runs in the background, and its first line of stdout (or "Done") appears as a notification                   |
 | `output.replace` | `output = "replace"` | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels |
@@ -105,19 +108,21 @@ Each action's `output` says what happens with the script's stdout.
 
 ## Home
 
-A normal window with two tabs, Settings and Scripts. Closing it hides it; pluck keeps running in the tray.
+A normal window with two tabs, Settings and Menu. Closing it hides it; pluck keeps running in the tray.
 
-| Rule                    | When                                              | Then                                                                                                                                      |
-| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `home.tabs`             | Home opens                                        | It shows the Settings tab; Scripts is one click away                                                                                      |
-| `settings.login`        | Start Pluck when you log in is clicked            | Pluck starts, or stops starting, with the system                                                                                          |
-| `settings.wsl`          | Run in WSL is checked (Windows only)              | Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths                                                           |
-| `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one. On Linux the section says how to bind `pluck menu` instead |
-| `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                                                 |
-| `scripts.list`          | The Scripts tab is open                           | It lists the actions from `pluck.toml` in menu order with their key, command and output, plus any config problems                         |
-| `scripts.reload`        | Home gets focus                                   | The list is read from `pluck.toml` again                                                                                                  |
-| `scripts.edit`          | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                                               |
-| `settings.actions`      | The Scripts tab is open                           | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml`                                          |
+| Rule                    | When                                              | Then                                                                                                                                            |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `home.tabs`             | Home opens                                        | It shows the Settings tab; Menu is one click away                                                                                               |
+| `settings.login`        | Start Pluck when you log in is clicked            | Pluck starts, or stops starting, with the system                                                                                                |
+| `settings.wsl`          | Run in WSL is checked (Windows only)              | Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths                                                                 |
+| `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one. On Linux the section says how to bind `pluck menu` instead       |
+| `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                                                       |
+| `menu-tab.list`         | The Menu tab is open                              | It lists the actions in menu order with their key, icon, and prompt or command, plus any config problems                                        |
+| `menu-tab.reload`       | Home gets focus                                   | The list is read from `pluck.toml` again                                                                                                        |
+| `menu-tab.files`        | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                                                     |
+| `menu-tab.prompt`       | New action is clicked                             | A dialog asks for a name, a key and a prompt the agent gets with the selected text; Script switches it to a command and an output               |
+| `menu-tab.key`          | A new action is named                             | Its key follows the first letter of the name no other action uses, until a key is typed; a key in use is refused, naming the action that has it |
+| `menu-tab.edit`         | An action is saved, moved up or down, or deleted  | `pluck.toml` is written at once in menu order, keeping its comments; while an entry in it is invalid nothing is written and the tab says why    |
 
 ## Agents
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
+use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 const DEFAULT_HOTKEY: &str = if cfg!(target_os = "macos") { "Super+Alt+Space" } else { "Ctrl+Alt+Space" };
 /// Written by the settings screen, unlike pluck.toml which is the user's.
@@ -90,6 +91,66 @@ pub fn load(dir: &Path) -> Config {
   config
 }
 
+/// Writes `actions` to pluck.toml as its `[[action]]` list, in order. Everything else in the file,
+/// and each kept entry's own comments and quoting, stays as the user wrote it.
+pub fn save_actions(dir: &Path, actions: &[Action]) -> Result<(), String> {
+  // Entries that don't load can't be shown or edited, so saving would silently drop them.
+  if let Some(problem) = load(dir).problems.first() {
+    return Err(format!("Fix pluck.toml first. {problem}"));
+  }
+  let path = dir.join("pluck.toml");
+  let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+  let mut document = text.parse::<DocumentMut>().map_err(|error| error.to_string())?;
+  let mut previous = document.remove("action").and_then(|item| item.into_array_of_tables().ok()).unwrap_or_default();
+
+  // The file's opening comments belong to its first entry; keep them at the top instead.
+  let header = previous.get_mut(0).and_then(|first| {
+    let header = first.decor().prefix().cloned();
+    first.decor_mut().set_prefix("\n");
+    header
+  });
+
+  let mut tables = ArrayOfTables::new();
+  for action in actions {
+    let index = previous.iter().position(|table| table.get("id").and_then(Item::as_str) == Some(&action.id));
+    let mut table = index.map(|index| previous.remove(index)).unwrap_or_default();
+    // The file is written in each table's remembered position, which would undo a reorder.
+    table.set_position(None);
+    let script = action.agent.is_none();
+    set(&mut table, "id", Some(&action.id));
+    set(&mut table, "name", Some(&action.name));
+    set(&mut table, "key", action.key.as_deref());
+    set(&mut table, "run", Some(action.run.as_str()).filter(|_| script));
+    set(&mut table, "agent", action.agent.as_deref());
+    let output = match action.output {
+      Output::Show => Some("show"),
+      Output::Copy => Some("copy"),
+      Output::Replace => Some("replace"),
+      Output::Notify => None,
+    };
+    set(&mut table, "output", output.filter(|_| script));
+    tables.push(table);
+  }
+  if let (Some(header), Some(first)) = (header, tables.get_mut(0)) {
+    first.decor_mut().set_prefix(header);
+  }
+  document.insert("action", Item::ArrayOfTables(tables));
+  fs::write(path, document.to_string()).map_err(|error| error.to_string())
+}
+
+/// Leaves an unchanged value alone, so its quoting survives.
+fn set(table: &mut Table, key: &str, text: Option<&str>) {
+  match text {
+    Some(text) if table.get(key).and_then(Item::as_str) != Some(text) => {
+      table.insert(key, value(text));
+    }
+    Some(_) => {}
+    None => {
+      table.remove(key);
+    }
+  }
+}
+
 fn broken(problem: String) -> Config {
   Config { problems: vec![problem], ..Config::default() }
 }
@@ -142,4 +203,55 @@ fn write_defaults(dir: &Path) -> io::Result<()> {
     }
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn prompt(id: &str, text: &str) -> Action {
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Notify }
+  }
+
+  fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("pluck-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("pluck.toml"), toml).unwrap();
+    dir
+  }
+
+  #[test]
+  // menu-tab.edit
+  fn menu_tab_edit_keeps_comments_and_writes_order() {
+    let dir = dir_with(
+      "keeps",
+      "# my notes\n\n[[action]]\nid = \"a\"\nname = \"A\"\nrun = 'scripts\\a.ps1' # windows path\n\n[[action]]\nid = \"b\"\nname = \"B\"\nrun = \"b\"\n\n[[action]]\nid = \"d\"\nname = \"D\"\nrun = \"d\"\n",
+    );
+    let mut loaded = load(&dir).actions;
+    let d = loaded.remove(2);
+    let mut a = loaded.remove(0);
+    a.key = Some("x".into());
+    save_actions(&dir, &[prompt("c", "Give me the context."), d, a]).unwrap();
+
+    let text = fs::read_to_string(dir.join("pluck.toml")).unwrap();
+    assert!(text.starts_with("# my notes"), "{text}");
+    assert!(text.contains("run = 'scripts\\a.ps1' # windows path"), "{text}");
+    let saved: Vec<_> = load(&dir).actions.into_iter().map(|action| (action.id, action.key, action.agent)).collect();
+    assert_eq!(
+      saved,
+      [
+        ("c".into(), Some("c".into()), Some("Give me the context.".into())),
+        ("d".into(), None, None),
+        ("a".into(), Some("x".into()), None)
+      ]
+    );
+  }
+
+  #[test]
+  // menu-tab.edit
+  fn menu_tab_edit_refuses_while_an_entry_is_invalid() {
+    let dir = dir_with("invalid", "[[action]]\nid = \"a\"\nname = \"A\"\n");
+    assert!(save_actions(&dir, &[]).unwrap_err().starts_with("Fix pluck.toml first"));
+  }
 }
