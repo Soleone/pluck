@@ -21,15 +21,15 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 
 ## Trigger
 
-| Rule                     | When                                 | Then                                                                              |
-| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `trigger.hotkey`         | The hotkey is pressed in any app     | Pluck grabs the selection and opens the menu                                      |
-| `trigger.hotkey-default` | No hotkey is configured              | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
-| `trigger.hotkey-config`  | `hotkey` is set in `pluck.toml`      | That hotkey is used from the next start of pluck                                  |
-| `trigger.tray`           | Pluck is running on Windows or macOS | It has a tray icon with Settings and Quit, and no window until triggered          |
-| `trigger.cli-menu`       | `pluck menu` is run                  | Same as pressing the hotkey                                                       |
-| `trigger.cli-run`        | `pluck run <id>` is run              | The action runs on the current selection without showing the menu                 |
-| `trigger.linux`          | Pluck runs on Linux                  | It registers no hotkey of its own; the window manager binds a key to `pluck menu` |
+| Rule                     | When                                             | Then                                                                              |
+| ------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `trigger.hotkey`         | The hotkey is pressed in any app                 | Pluck grabs the selection and opens the menu                                      |
+| `trigger.hotkey-default` | No hotkey has been chosen                        | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
+| `trigger.tray`           | Pluck is running on Windows or macOS             | It has a tray icon; a click opens home, its menu has Open Pluck and Quit          |
+| `trigger.start`          | Pluck is started, or started again while running | Home opens; a second copy never runs                                              |
+| `trigger.cli-menu`       | `pluck menu` is run                              | Same as pressing the hotkey                                                       |
+| `trigger.cli-run`        | `pluck run <id>` is run                          | The action runs on the current selection without showing the menu                 |
+| `trigger.linux`          | Pluck runs on Linux                              | It registers no hotkey of its own; the window manager binds a key to `pluck menu` |
 
 > Why: Wayland doesn't let apps grab global keys. Hyprland binds them instead (`bind = SUPER, P, exec, pluck menu`).
 
@@ -40,7 +40,7 @@ What pluck reads from the app you were in when the hotkey was pressed.
 | Rule                     | When                                                                | Then                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `grab.text`              | Text is selected                                                    | The action receives exactly the selected text as plain text                                                             |
-| `grab.empty`             | Nothing is selected                                                 | The menu still opens, showing that nothing is selected, and its actions are disabled                                    |
+| `grab.empty`             | Nothing is selected                                                 | Home opens instead of the menu                                                                                          |
 | `grab.context`           | Any grab                                                            | The action also receives the app name and window title                                                                  |
 | `grab.url`               | The selection was copied from a browser that reports its source URL | The action also receives that URL                                                                                       |
 | `grab.clipboard-restore` | Pluck had to copy the selection through the clipboard               | The clipboard holds what it held before, once the grab is done                                                          |
@@ -97,20 +97,34 @@ Each action's `output` says what happens with the script's stdout.
 | `output.replace` | `output = "replace"` | Stdout replaces the selection in the original app                                                                              |
 | `output.default` | No `output` is given | It is `notify`                                                                                                                 |
 
-## Settings
+## Home
 
-| Rule                   | When                                         | Then                                                                                             |
-| ---------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `settings.open`        | Settings is chosen from the tray or the menu | A settings window opens                                                                          |
-| `settings.hotkey`      | A new hotkey is recorded                     | It takes effect immediately and is saved                                                         |
-| `settings.actions`     | Settings is open                             | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml` |
-| `settings.open-folder` | "Open config folder"                         | The config folder opens in the system file manager                                               |
+A normal window with two tabs, Settings and Scripts. Closing it hides it; pluck keeps running in the tray.
+
+| Rule                    | When                                              | Then                                                                                                              |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `home.tabs`             | Home opens                                        | It shows the Settings tab; Scripts is one click away                                                              |
+| `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one                                     |
+| `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                         |
+| `scripts.list`          | The Scripts tab is open                           | It lists the actions from `pluck.toml` in menu order with their key, command and output, plus any config problems |
+| `scripts.reload`        | Home gets focus                                   | The list is read from `pluck.toml` again                                                                          |
+| `scripts.edit`          | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                       |
+| `settings.actions`      | The Scripts tab is open                           | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml`                  |
+
+## Updates
+
+| Rule              | When                          | Then                                                                                                   |
+| ----------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `update.check`    | Pluck starts                  | It asks GitHub for the latest release once; a failed check stays silent                                |
+| `update.offer`    | A newer release exists        | Home shows a bar with the version and an Update button                                                 |
+| `update.install`  | Update is clicked             | The signed installer downloads and runs, and pluck restarts on the new version; a failure offers Retry |
+| `install.windows` | Pluck is installed on Windows | One setup exe installs it per user; no MSI                                                             |
 
 ## Web prototype
 
-| Rule            | When                                           | Then                                                                                                       |
-| --------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `web.prototype` | Pluck runs in a plain browser (`pnpm dev:web`) | The menu, panels and settings render with sample text and sample actions, and actions return canned output |
+| Rule            | When                                           | Then                                                                                                    |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `web.prototype` | Pluck runs in a plain browser (`pnpm dev:web`) | The menu and home render with sample data, switchable from the header, and actions return canned output |
 
 > Why: UI iteration in a browser is much faster than rebuilding the native app on Windows.
 

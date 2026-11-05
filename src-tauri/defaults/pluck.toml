@@ -8,9 +8,6 @@
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "notify" (the default) runs in the background and shows its first line.
 
-# Restart pluck after changing the hotkey.
-hotkey = "Ctrl+Alt+Space"
-
 [[action]]
 id = "explain"
 name = "Explain (Claude in WSL)"

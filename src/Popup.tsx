@@ -69,13 +69,7 @@ export function Popup() {
   }
 
   function runAccelerator(event: KeyboardEvent<HTMLInputElement>) {
-    if (
-      event.currentTarget.value ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey ||
-      !opened?.text
-    )
+    if (!opened || event.currentTarget.value || event.ctrlKey || event.altKey || event.metaKey)
       return;
     const action = opened.actions.find(
       (candidate) => candidate.key?.toLowerCase() === event.key.toLowerCase(),
@@ -110,11 +104,7 @@ export function Popup() {
   return (
     <Command key={openCount} className="h-full">
       <div className="px-2 pt-1 pb-2">
-        {opened.text ? (
-          <p className="line-clamp-2 text-sm">{opened.text}</p>
-        ) : (
-          <p className="text-sm text-muted-foreground">No text selected</p>
-        )}
+        <p className="line-clamp-2 text-sm">{opened.text}</p>
         {opened.app && (
           <p className="truncate text-xs text-muted-foreground">
             {opened.app}
@@ -126,12 +116,7 @@ export function Popup() {
       <CommandList>
         <CommandEmpty>No matching action</CommandEmpty>
         {opened.actions.map((action) => (
-          <CommandItem
-            key={action.id}
-            value={action.name}
-            disabled={!opened.text}
-            onSelect={() => start(action)}
-          >
+          <CommandItem key={action.id} value={action.name} onSelect={() => start(action)}>
             {action.name}
             {action.key && <CommandShortcut>{action.key.toUpperCase()}</CommandShortcut>}
           </CommandItem>

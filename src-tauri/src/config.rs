@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
 const DEFAULT_HOTKEY: &str = "Ctrl+Alt+Space";
+/// Written by the settings screen, unlike pluck.toml which is the user's.
+const SETTINGS: &str = "settings.json";
 
 /// Written on first run so the menu has something to try.
 const DEFAULT_FILES: [(&str, &str); 6] = [
@@ -35,8 +37,8 @@ fn notify() -> Output {
   Output::Notify
 }
 
+#[derive(Default)]
 pub struct Config {
-  pub hotkey: String,
   pub actions: Vec<Action>,
   /// One line per thing that couldn't be read, shown in the menu.
   pub problems: Vec<String>,
@@ -60,7 +62,7 @@ pub fn load(dir: &Path) -> Config {
     Err(error) => return broken(format!("pluck.toml: {}", error.message())),
   };
 
-  let mut config = empty(table.get("hotkey").and_then(|value| value.as_str()).unwrap_or(DEFAULT_HOTKEY));
+  let mut config = Config::default();
   let entries = table.get("action").and_then(|value| value.as_array());
   for (index, entry) in entries.into_iter().flatten().enumerate() {
     match entry.clone().try_into::<Action>() {
@@ -71,12 +73,25 @@ pub fn load(dir: &Path) -> Config {
   config
 }
 
-fn empty(hotkey: &str) -> Config {
-  Config { hotkey: hotkey.to_string(), actions: Vec::new(), problems: Vec::new() }
+fn broken(problem: String) -> Config {
+  Config { problems: vec![problem], ..Config::default() }
 }
 
-fn broken(problem: String) -> Config {
-  Config { problems: vec![problem], ..empty(DEFAULT_HOTKEY) }
+#[derive(Serialize, Deserialize)]
+struct Settings {
+  hotkey: String,
+}
+
+pub fn hotkey(dir: &Path) -> String {
+  fs::read_to_string(dir.join(SETTINGS))
+    .ok()
+    .and_then(|text| serde_json::from_str::<Settings>(&text).ok())
+    .map_or_else(|| DEFAULT_HOTKEY.to_string(), |settings| settings.hotkey)
+}
+
+pub fn save_hotkey(dir: &Path, hotkey: &str) -> io::Result<()> {
+  fs::create_dir_all(dir)?;
+  fs::write(dir.join(SETTINGS), serde_json::to_string_pretty(&Settings { hotkey: hotkey.to_string() })?)
 }
 
 fn write_defaults(dir: &Path) -> io::Result<()> {

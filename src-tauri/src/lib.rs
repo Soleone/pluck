@@ -17,7 +17,7 @@ use std::{
 use tauri::{
   AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow, WindowEvent,
   menu::{Menu, MenuItem},
-  tray::TrayIconBuilder,
+  tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
@@ -29,6 +29,17 @@ struct Opened {
   text: String,
   app: String,
   title: String,
+  actions: Vec<Action>,
+  problems: Vec<String>,
+}
+
+/// What the home screen shows; read again each time it gets focus.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HomeState {
+  version: String,
+  hotkey: String,
+  config_dir: String,
   actions: Vec<Action>,
   problems: Vec<String>,
 }
@@ -54,9 +65,7 @@ static GRABBING: AtomicBool = AtomicBool::new(false);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-      notify(app, "Pluck is already running", "Select text anywhere and press the hotkey.")
-    }))
+    .plugin(tauri_plugin_single_instance::init(|app, _, _| show_home(app)))
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, _, event| {
@@ -69,10 +78,20 @@ pub fn run() {
     )
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_process::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .manage(Mutex::new(Session::default()))
-    .invoke_handler(tauri::generate_handler![run_action, dismiss])
+    .invoke_handler(tauri::generate_handler![
+      run_action,
+      dismiss,
+      home_state,
+      set_hotkey,
+      pause_hotkey,
+      open_config_folder,
+      edit_config
+    ])
     .on_window_event(|window, event| match event {
-      WindowEvent::Focused(false) => {
+      WindowEvent::Focused(false) if window.label() == "menu" => {
         let _ = window.hide();
       }
       WindowEvent::CloseRequested { api, .. } => {
@@ -82,11 +101,12 @@ pub fn run() {
       _ => {}
     })
     .setup(|app| {
-      let hotkey = config::load(&config_dir(app.handle())).hotkey;
+      let hotkey = config::hotkey(&config_dir(app.handle()));
       if let Err(error) = app.global_shortcut().register(hotkey.as_str()) {
         notify(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
       }
       add_tray(app.handle(), &hotkey)?;
+      show_home(app.handle());
       Ok(())
     })
     .run(tauri::generate_context!())
@@ -102,13 +122,19 @@ fn open_menu(app: &AppHandle) {
   let selection = grab::copy_selection();
   GRABBING.store(false, Ordering::SeqCst);
 
+  // The hotkey alone, with nothing selected, opens the home screen.
+  let text = selection.unwrap_or_default();
+  if text.is_empty() {
+    return show_home(app);
+  }
   let config = config::load(&config_dir(app));
-  let mut problems = config.problems;
-  let text = selection.unwrap_or_else(|error| {
-    problems.push(error);
-    String::new()
-  });
-  let opened = Opened { text, app: target.app.clone(), title: target.title.clone(), actions: config.actions, problems };
+  let opened = Opened {
+    text,
+    app: target.app.clone(),
+    title: target.title.clone(),
+    actions: config.actions,
+    problems: config.problems,
+  };
   let _ = window.emit("pluck://open", &opened);
   *app.state::<Mutex<Session>>().lock().unwrap() = Session { opened, target };
 
@@ -142,6 +168,53 @@ fn run_action(app: AppHandle, session: State<Mutex<Session>>, id: String, run: u
 #[tauri::command]
 fn dismiss(app: AppHandle) {
   hide_menu(&app);
+}
+
+#[tauri::command]
+fn home_state(app: AppHandle) -> HomeState {
+  let dir = config_dir(&app);
+  let config = config::load(&dir);
+  HomeState {
+    version: app.package_info().version.to_string(),
+    hotkey: config::hotkey(&dir),
+    config_dir: dir.display().to_string(),
+    actions: config.actions,
+    problems: config.problems,
+  }
+}
+
+/// Registers `hotkey` in place of the current one and saves it, or keeps the current one.
+#[tauri::command]
+fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+  let dir = config_dir(&app);
+  let shortcuts = app.global_shortcut();
+  let _ = shortcuts.unregister_all();
+  if shortcuts.register(hotkey.as_str()).is_err() {
+    let _ = shortcuts.register(config::hotkey(&dir).as_str());
+    return Err("That hotkey is taken by the system or another app.".into());
+  }
+  config::save_hotkey(&dir, &hotkey).map_err(|error| format!("Couldn't save the hotkey: {error}"))?;
+  if let Some(tray) = app.tray_by_id(TRAY) {
+    let _ = tray.set_tooltip(Some(tooltip(&hotkey)));
+  }
+  Ok(())
+}
+
+/// Registered hotkeys never reach the page, so recording a new one turns the current one off.
+#[tauri::command]
+fn pause_hotkey(app: AppHandle) {
+  let _ = app.global_shortcut().unregister_all();
+}
+
+#[tauri::command]
+fn open_config_folder(app: AppHandle) -> Result<(), String> {
+  app.opener().open_path(config_dir(&app).to_string_lossy(), None::<&str>).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn edit_config(app: AppHandle) -> Result<(), String> {
+  let file = config_dir(&app).join("pluck.toml");
+  app.opener().open_path(file.to_string_lossy(), None::<&str>).map_err(|error| error.to_string())
 }
 
 fn show(app: &AppHandle, child: Child, run: u32) {
@@ -187,19 +260,37 @@ fn place_at_cursor(window: &WebviewWindow) -> tauri::Result<()> {
   window.set_position(PhysicalPosition::new(x, y))
 }
 
+fn show_home(app: &AppHandle) {
+  let Some(window) = app.get_webview_window("home") else { return };
+  let _ = window.unminimize();
+  let _ = window.show();
+  let _ = window.set_focus();
+}
+
+const TRAY: &str = "tray";
+
+fn tooltip(hotkey: &str) -> String {
+  format!("Pluck ({hotkey})")
+}
+
+/// A click opens the home screen; the right-click menu also has Quit.
 fn add_tray(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
-  let folder = MenuItem::with_id(app, "folder", "Open config folder", true, None::<&str>)?;
+  let home = MenuItem::with_id(app, "home", "Open Pluck", true, None::<&str>)?;
   let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-  TrayIconBuilder::new()
+  TrayIconBuilder::with_id(TRAY)
     .icon(app.default_window_icon().expect("the app has an icon").clone())
-    .tooltip(format!("Pluck ({hotkey})"))
-    .menu(&Menu::with_items(app, &[&folder, &quit])?)
+    .tooltip(tooltip(hotkey))
+    .menu(&Menu::with_items(app, &[&home, &quit])?)
+    .show_menu_on_left_click(false)
     .on_menu_event(|app, event| match event.id.as_ref() {
-      "folder" => {
-        let _ = app.opener().open_path(config_dir(app).to_string_lossy(), None::<&str>);
-      }
+      "home" => show_home(app),
       "quit" => app.exit(0),
       _ => {}
+    })
+    .on_tray_icon_event(|tray, event| {
+      if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+        show_home(tray.app_handle());
+      }
     })
     .build(app)?;
   Ok(())

@@ -22,6 +22,15 @@
         "skipTaskbar": true,
         "visible": false,
         "shadow": true
+      },
+      {
+        "label": "home",
+        "title": "Pluck",
+        "width": 720,
+        "height": 540,
+        "minWidth": 560,
+        "minHeight": 420,
+        "visible": false
       }
     ],
     "security": {
@@ -38,5 +47,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDMzcxMUYzNDQ1N0U3MDAKUldRQTUxZEU4eEUzdlAwcDY0U2pHYXFRR3hDSHljbEpNRHg3eGZqZWF3L1Z3VHdqOXNISzJ0Z3UK",
+      "endpoints": ["https://github.com/Soleone/pluck/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

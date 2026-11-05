@@ -6,8 +6,13 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
 
 - `pnpm dev:web` runs the UI in a browser with sample data. Use it for UI work.
 - `pnpm dev` runs the native app. It builds for the OS it runs on, so for Windows: run `win-sync` here (copies to `D:\src\wsl\pluck`, profile in `~/.config/win-sync/pluck.ignore`), then `pnpm install` and `pnpm dev` there in PowerShell.
-- `pnpm build:tauri` builds the app and installers. On Windows the plain exe is `src-tauri\target\release\pluck.exe`.
-- WSL lacks the system libraries for a Linux build. To type-check the Windows code from WSL, run `cargo check --target x86_64-pc-windows-gnu` in `src-tauri` with an `x86_64-w64-mingw32-windres` on PATH; a stub that only touches its `-o` file is enough, since checking links nothing.
+- `pnpm build:tauri` builds the app and installers. On Windows it builds only the NSIS setup exe (`src-tauri\target\release\bundle\nsis`); the plain exe is `src-tauri\target\release\pluck.exe`.
+- WSL lacks the system libraries for a Linux build. To type-check the Windows code from WSL, run `cargo check --target x86_64-pc-windows-gnu` in `src-tauri` with `x86_64-w64-mingw32-windres`, `-gcc` and `-ar` on PATH; stubs that only touch their output file are enough, since checking links nothing.
+- The icon is `public/favicon.svg`. After changing it, run `pnpm tauri icon public/favicon.svg` and delete the generated `android/` and `ios/` folders.
+
+## Releasing
+
+`pnpm release` bumps the version, writes CHANGELOG.md and pushes a `v*` tag. `.github/workflows/release.yml` then builds the signed Windows installer and publishes it with `latest.json`, which the in-app updater reads from `github.com/Soleone/pluck`. The signing key is in `$DATA/secrets/pluck` and in the repo's Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Local `pnpm build:tauri` builds an unsigned installer, which is fine for testing.
 
 ## Where things are
 
