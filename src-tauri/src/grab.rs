@@ -8,6 +8,11 @@ pub struct Target {
   pub title: String,
 }
 
+/// Clipboard text, used when nothing is selected. Empty when it holds no text.
+pub fn clipboard_text() -> String {
+  arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text()).unwrap_or_default()
+}
+
 #[cfg(windows)]
 pub use windows::{copy_selection, focus, target};
 

@@ -14,6 +14,8 @@ export type Action = {
 /** What the menu shows for one trigger. */
 export type Opened = {
   text: string;
+  /** Nothing was selected, so `text` is what the clipboard held. */
+  clipboard: boolean;
   app: string;
   title: string;
   actions: Action[];
@@ -85,6 +87,7 @@ const ps = (script: string) =>
 
 const sample: Opened = {
   text: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
+  clipboard: false,
   app: "chrome",
   title: "Ludwig Wittgenstein - Wikipedia",
   actions: [

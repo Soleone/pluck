@@ -105,11 +105,15 @@ export function Popup() {
     <Command key={openCount} className="h-full">
       <div className="px-2 pt-1 pb-2">
         <p className="line-clamp-2 text-sm">{opened.text}</p>
-        {opened.app && (
-          <p className="truncate text-xs text-muted-foreground">
-            {opened.app}
-            {opened.title && ` · ${opened.title}`}
-          </p>
+        {opened.clipboard ? (
+          <p className="text-xs text-muted-foreground">From the clipboard</p>
+        ) : (
+          opened.app && (
+            <p className="truncate text-xs text-muted-foreground">
+              {opened.app}
+              {opened.title && ` · ${opened.title}`}
+            </p>
+          )
         )}
       </div>
       <CommandInput ref={input} autoFocus placeholder="Filter actions" onKeyDown={runAccelerator} />

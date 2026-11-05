@@ -27,6 +27,8 @@ use tauri_plugin_opener::OpenerExt;
 #[derive(Clone, Default, Serialize)]
 struct Opened {
   text: String,
+  /// Nothing was selected, so `text` is what the clipboard held.
+  clipboard: bool,
   app: String,
   title: String,
   actions: Vec<Action>,
@@ -122,14 +124,17 @@ fn open_menu(app: &AppHandle) {
   let selection = grab::copy_selection();
   GRABBING.store(false, Ordering::SeqCst);
 
-  // The hotkey alone, with nothing selected, opens the home screen.
-  let text = selection.unwrap_or_default();
+  // With nothing selected the clipboard stands in; with that empty too, home opens.
+  let selection = selection.unwrap_or_default();
+  let clipboard = selection.is_empty();
+  let text = if clipboard { grab::clipboard_text() } else { selection };
   if text.is_empty() {
     return show_home(app);
   }
   let config = config::load(&config_dir(app));
   let opened = Opened {
     text,
+    clipboard,
     app: target.app.clone(),
     title: target.title.clone(),
     actions: config.actions,
