@@ -1,8 +1,19 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { bridge, type HomeState, type Update } from "@/bridge";
+import {
+  bridge,
+  type AgentCatalog,
+  type AgentSettings,
+  type HomeState,
+  type Update,
+} from "@/bridge";
+import { modelChoices } from "@/agent/pi";
+import { ChoiceField } from "@/ChoiceField";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -38,11 +49,16 @@ export function Home() {
             <TabsTrigger value="scripts">Scripts</TabsTrigger>
           </TabsList>
         </header>
-        <TabsContent value="settings">
+        <TabsContent value="settings" className="min-h-0 overflow-auto">
           <div className="flex flex-col gap-4">
             <HotkeySetting
               hotkey={state.hotkey}
               onChange={(hotkey) => setState({ ...state, hotkey })}
+            />
+            <AgentSetting
+              agent={state.agent}
+              windows={state.windows}
+              onChange={(agent) => setState({ ...state, agent })}
             />
             <p className="text-muted-foreground">Pluck {state.version}</p>
           </div>
@@ -96,7 +112,7 @@ function HotkeySetting({
             Hotkey
           </span>
           <span className="text-muted-foreground">
-            Opens the menu for the selected text, or this window when nothing is selected.
+            Opens the menu for the selected text, or for the clipboard when nothing is selected.
           </span>
         </div>
         <Button
@@ -123,6 +139,151 @@ function HotkeySetting({
         Click it, then press the new keys: Ctrl, Alt or Win with a letter, digit, F-key or Space.
         Escape keeps the current one.
       </p>
+      {problem && (
+        <p role="status" className="text-destructive">
+          {problem}
+        </p>
+      )}
+    </section>
+  );
+}
+
+const DEFAULT = "default";
+
+/** The harness, model and thinking level new agent sessions use, and the folder they run in. */
+function AgentSetting({
+  agent,
+  windows,
+  onChange,
+}: {
+  agent: AgentSettings;
+  windows: boolean;
+  onChange: (agent: AgentSettings) => void;
+}) {
+  const [catalog, setCatalog] = useState<AgentCatalog | "loading" | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [folder, setFolder] = useState(agent.folder);
+
+  /** Pi has to start to list its models, so that waits until a list is opened. */
+  function load() {
+    if (catalog) return;
+    setCatalog("loading");
+    bridge.agentCatalog().then(setCatalog, (caught: unknown) => {
+      setCatalog(null);
+      setProblem(errorText(caught));
+    });
+  }
+
+  function save(next: AgentSettings) {
+    setProblem(null);
+    onChange(next);
+    bridge.setAgentSettings(next).catch((caught: unknown) => setProblem(errorText(caught)));
+  }
+
+  const loaded = catalog && catalog !== "loading" ? catalog : null;
+  const choices = loaded ? modelChoices(loaded.models, loaded.settings) : [];
+  const settings = loaded?.settings;
+  const piModel =
+    settings?.defaultProvider && settings.defaultModel
+      ? `${settings.defaultProvider}/${settings.defaultModel}`
+      : null;
+  const model = choices.find((choice) => choice.id === (agent.model ?? piModel));
+  const levels = model?.thinkingLevels ?? (agent.thinking ? [agent.thinking] : []);
+  const piName = choices.find((choice) => choice.id === piModel)?.name ?? piModel;
+
+  const models = [
+    { value: DEFAULT, label: piName ? `Pi default (${piName})` : "Pi default" },
+    ...choices.map((choice) => ({
+      value: choice.id,
+      label: `${choice.name} · ${choice.id.split("/")[0]}`,
+    })),
+  ];
+  if (agent.model && !choices.some((choice) => choice.id === agent.model))
+    models.push({ value: agent.model, label: agent.model });
+  const thinking = [
+    {
+      value: DEFAULT,
+      label: settings?.defaultThinkingLevel
+        ? `Pi default (${settings.defaultThinkingLevel})`
+        : "Pi default",
+    },
+    ...levels.map((level) => ({ value: level, label: level })),
+  ];
+
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium">Agent</span>
+          <span className="text-muted-foreground">
+            What agent actions and new sessions run. Running sessions keep their own.
+          </span>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
+          Open agents
+        </Button>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <ChoiceField
+          id="agent-harness"
+          label="Harness"
+          value={agent.harness}
+          options={[{ value: "pi", label: "Pi" }]}
+          onChange={() => {}}
+        />
+        <ChoiceField
+          id="agent-model"
+          label="Model"
+          value={agent.model ?? DEFAULT}
+          options={models}
+          onOpen={load}
+          onChange={(value) => {
+            const next = value === DEFAULT ? null : value;
+            const nextLevels = choices.find(
+              (choice) => choice.id === (next ?? piModel),
+            )?.thinkingLevels;
+            const keepThinking = agent.thinking && nextLevels?.includes(agent.thinking);
+            save({ ...agent, model: next, thinking: keepThinking ? agent.thinking : null });
+          }}
+        />
+        <ChoiceField
+          id="agent-thinking"
+          label="Thinking"
+          value={agent.thinking ?? DEFAULT}
+          options={thinking}
+          onOpen={load}
+          onChange={(value) => save({ ...agent, thinking: value === DEFAULT ? null : value })}
+        />
+      </div>
+      {windows && (
+        <Field orientation="horizontal">
+          <Checkbox
+            id="agent-wsl"
+            checked={agent.wsl}
+            onCheckedChange={(wsl) => {
+              // WSL has its own Pi, with its own models.
+              setCatalog(null);
+              save({ ...agent, wsl });
+            }}
+          />
+          <FieldLabel htmlFor="agent-wsl">Run in WSL</FieldLabel>
+        </Field>
+      )}
+      <Field>
+        <FieldLabel htmlFor="agent-folder">Folder</FieldLabel>
+        <Input
+          id="agent-folder"
+          value={folder}
+          onChange={(event) => setFolder(event.target.value)}
+          onBlur={() =>
+            folder.trim() && folder !== agent.folder && save({ ...agent, folder: folder.trim() })
+          }
+        />
+        <FieldDescription>
+          Where new sessions work, like ~/src{agent.wsl && " inside WSL"}.
+        </FieldDescription>
+      </Field>
+      {catalog === "loading" && <p className="text-muted-foreground">Asking Pi for its models…</p>}
       {problem && (
         <p role="status" className="text-destructive">
           {problem}
@@ -161,11 +322,14 @@ function Scripts({ state }: { state: HomeState }) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">{action.name}</span>
-              <code className="truncate text-xs text-muted-foreground" title={action.run}>
-                {action.run}
+              <code
+                className="truncate text-xs text-muted-foreground"
+                title={action.agent ?? action.run}
+              >
+                {action.agent ?? action.run}
               </code>
             </div>
-            <Badge variant="secondary">{action.output}</Badge>
+            <Badge variant="secondary">{action.agent ? "agent" : action.output}</Badge>
           </li>
         ))}
       </ul>

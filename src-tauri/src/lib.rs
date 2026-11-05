@@ -1,8 +1,10 @@
 mod action;
+mod agent;
 mod config;
 mod grab;
 
-use config::{Action, Output};
+use agent::{AgentSession, Agents};
+use config::{Action, AgentSettings, Output};
 use grab::Target;
 use serde::Serialize;
 use std::{
@@ -44,6 +46,15 @@ struct HomeState {
   config_dir: String,
   actions: Vec<Action>,
   problems: Vec<String>,
+  agent: AgentSettings,
+  windows: bool,
+}
+
+/// Asks the agents window to start a session on `prompt`, from a menu action.
+#[derive(Clone, Serialize)]
+struct AgentRequest {
+  title: String,
+  prompt: String,
 }
 
 #[derive(Default)]
@@ -67,7 +78,7 @@ static GRABBING: AtomicBool = AtomicBool::new(false);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_single_instance::init(|app, _, _| show_home(app)))
+    .plugin(tauri_plugin_single_instance::init(|app, _, _| show_window(app, "home")))
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, _, event| {
@@ -83,6 +94,7 @@ pub fn run() {
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .manage(Mutex::new(Session::default()))
+    .manage(Agents::default())
     .invoke_handler(tauri::generate_handler![
       run_action,
       dismiss,
@@ -90,7 +102,13 @@ pub fn run() {
       set_hotkey,
       pause_hotkey,
       open_config_folder,
-      edit_config
+      edit_config,
+      set_agent_settings,
+      agent_models,
+      agent_sessions,
+      agent_start,
+      agent_send,
+      show_agents
     ])
     .on_window_event(|window, event| match event {
       WindowEvent::Focused(false) if window.label() == "menu" => {
@@ -103,12 +121,12 @@ pub fn run() {
       _ => {}
     })
     .setup(|app| {
-      let hotkey = config::hotkey(&config_dir(app.handle()));
+      let hotkey = config::settings(&config_dir(app.handle())).hotkey;
       if let Err(error) = app.global_shortcut().register(hotkey.as_str()) {
         notify(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
       }
       add_tray(app.handle(), &hotkey)?;
-      show_home(app.handle());
+      show_window(app.handle(), "home");
       Ok(())
     })
     .run(tauri::generate_context!())
@@ -129,7 +147,7 @@ fn open_menu(app: &AppHandle) {
   let clipboard = selection.is_empty();
   let text = if clipboard { grab::clipboard_text() } else { selection };
   if text.is_empty() {
-    return show_home(app);
+    return show_window(app, "home");
   }
   let config = config::load(&config_dir(app));
   let opened = Opened {
@@ -154,6 +172,14 @@ fn run_action(app: AppHandle, session: State<Mutex<Session>>, id: String, run: u
     let session = session.lock().unwrap();
     let opened = &session.opened;
     let action = opened.actions.iter().find(|action| action.id == id).cloned().ok_or("Unknown action")?;
+    if let Some(prompt) = &action.agent {
+      let request = AgentRequest { title: title_of(&opened.text), prompt: agent_prompt(prompt, opened) };
+      drop(session);
+      hide_menu(&app);
+      let _ = app.emit_to("agents", "pluck://agent-request", request);
+      show_window(&app, "agents");
+      return Ok(());
+    }
     let env = [("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
     let child = action::spawn(&action.run, &config_dir(&app), &opened.text, &env).map_err(|error| error.to_string())?;
     (action, child)
@@ -179,12 +205,15 @@ fn dismiss(app: AppHandle) {
 fn home_state(app: AppHandle) -> HomeState {
   let dir = config_dir(&app);
   let config = config::load(&dir);
+  let settings = config::settings(&dir);
   HomeState {
     version: app.package_info().version.to_string(),
-    hotkey: config::hotkey(&dir),
+    hotkey: settings.hotkey,
     config_dir: dir.display().to_string(),
     actions: config.actions,
     problems: config.problems,
+    agent: settings.agent,
+    windows: cfg!(windows),
   }
 }
 
@@ -192,13 +221,15 @@ fn home_state(app: AppHandle) -> HomeState {
 #[tauri::command]
 fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
   let dir = config_dir(&app);
+  let mut settings = config::settings(&dir);
   let shortcuts = app.global_shortcut();
   let _ = shortcuts.unregister_all();
   if shortcuts.register(hotkey.as_str()).is_err() {
-    let _ = shortcuts.register(config::hotkey(&dir).as_str());
+    let _ = shortcuts.register(settings.hotkey.as_str());
     return Err("That hotkey is taken by the system or another app.".into());
   }
-  config::save_hotkey(&dir, &hotkey).map_err(|error| format!("Couldn't save the hotkey: {error}"))?;
+  settings.hotkey = hotkey.clone();
+  config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the hotkey: {error}"))?;
   if let Some(tray) = app.tray_by_id(TRAY) {
     let _ = tray.set_tooltip(Some(tooltip(&hotkey)));
   }
@@ -220,6 +251,80 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
 fn edit_config(app: AppHandle) -> Result<(), String> {
   let file = config_dir(&app).join("pluck.toml");
   app.opener().open_path(file.to_string_lossy(), None::<&str>).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_agent_settings(app: AppHandle, agent: AgentSettings) -> Result<(), String> {
+  let dir = config_dir(&app);
+  let settings = config::Settings { agent, ..config::settings(&dir) };
+  config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the agent settings: {error}"))
+}
+
+/// Blocks for a few seconds while Pi starts, so it runs off the main thread.
+#[tauri::command]
+async fn agent_models(app: AppHandle) -> Result<serde_json::Value, String> {
+  let settings = config::settings(&config_dir(&app)).agent;
+  agent::models(&settings.folder, settings.wsl)
+}
+
+#[tauri::command]
+fn agent_sessions(app: AppHandle) -> Vec<AgentSession> {
+  agent::sessions(&config_dir(&app))
+}
+
+/// Runs session `id`, adding it to the list with the current agent settings when it is new.
+#[tauri::command]
+fn agent_start(app: AppHandle, agents: State<Agents>, id: String, title: String) -> Result<(), String> {
+  let dir = config_dir(&app);
+  let mut sessions = agent::sessions(&dir);
+  let mut args = Vec::new();
+  let session = match sessions.iter().find(|session| session.id == id) {
+    Some(session) => session.clone(),
+    None => {
+      let settings = config::settings(&dir).agent;
+      if settings.harness != "pi" {
+        return Err(format!("Pluck can't run {} yet", settings.harness));
+      }
+      args.extend(settings.model.into_iter().flat_map(|model| ["--model".to_string(), model]));
+      args.extend(settings.thinking.into_iter().flat_map(|level| ["--thinking".to_string(), level]));
+      let session = AgentSession { id, title, folder: settings.folder, wsl: settings.wsl };
+      sessions.insert(0, session.clone());
+      agent::save_sessions(&dir, &sessions).map_err(|error| format!("Couldn't save the session list: {error}"))?;
+      session
+    }
+  };
+  agent::start(&app, &agents, &session, &args).map_err(|error| format!("Couldn't start Pi: {error}"))
+}
+
+#[tauri::command]
+fn agent_send(agents: State<Agents>, id: String, record: String) -> Result<(), String> {
+  agent::send(&agents, &id, &record)
+}
+
+#[tauri::command]
+fn show_agents(app: AppHandle) {
+  show_window(&app, "agents");
+}
+
+/// The action's prompt, then the text and where it came from.
+fn agent_prompt(prompt: &str, opened: &Opened) -> String {
+  let source = if opened.clipboard {
+    "the clipboard".to_string()
+  } else if opened.title.is_empty() {
+    opened.app.clone()
+  } else {
+    format!("{} ({})", opened.app, opened.title)
+  };
+  format!("{prompt}\n\nText from {source}:\n\n<text>\n{}\n</text>", opened.text)
+}
+
+/// The start of the text, on one line.
+fn title_of(text: &str) -> String {
+  let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+  match line.char_indices().nth(60) {
+    Some((end, _)) => format!("{}…", &line[..end]),
+    None => line,
+  }
 }
 
 fn show(app: &AppHandle, child: Child, run: u32) {
@@ -265,8 +370,8 @@ fn place_at_cursor(window: &WebviewWindow) -> tauri::Result<()> {
   window.set_position(PhysicalPosition::new(x, y))
 }
 
-fn show_home(app: &AppHandle) {
-  let Some(window) = app.get_webview_window("home") else { return };
+fn show_window(app: &AppHandle, label: &str) {
+  let Some(window) = app.get_webview_window(label) else { return };
   let _ = window.unminimize();
   let _ = window.show();
   let _ = window.set_focus();
@@ -278,23 +383,24 @@ fn tooltip(hotkey: &str) -> String {
   format!("Pluck ({hotkey})")
 }
 
-/// A click opens the home screen; the right-click menu also has Quit.
+/// A click opens the home screen; the right-click menu also has Agents and Quit.
 fn add_tray(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
   let home = MenuItem::with_id(app, "home", "Open Pluck", true, None::<&str>)?;
+  let agents = MenuItem::with_id(app, "agents", "Agents", true, None::<&str>)?;
   let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
   TrayIconBuilder::with_id(TRAY)
     .icon(app.default_window_icon().expect("the app has an icon").clone())
     .tooltip(tooltip(hotkey))
-    .menu(&Menu::with_items(app, &[&home, &quit])?)
+    .menu(&Menu::with_items(app, &[&home, &agents, &quit])?)
     .show_menu_on_left_click(false)
     .on_menu_event(|app, event| match event.id.as_ref() {
-      "home" => show_home(app),
+      "home" | "agents" => show_window(app, event.id.as_ref()),
       "quit" => app.exit(0),
       _ => {}
     })
     .on_tray_icon_event(|tray, event| {
       if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-        show_home(tray.app_handle());
+        show_window(tray.app_handle(), "home");
       }
     })
     .build(app)?;

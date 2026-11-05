@@ -7,13 +7,14 @@
 #           in PLUCK_TEXT (unless it's very long), plus PLUCK_APP and PLUCK_TITLE.
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "notify" (the default) runs in the background and shows its first line.
+#   agent   instead of run: a prompt. The text is sent with it to a new agent session, using the
+#           agent set in Settings.
 
 [[action]]
 id = "explain"
-name = "Explain (Claude in WSL)"
+name = "Explain"
 key = "e"
-run = "wsl.exe -e bash -lc \"claude -p 'Explain this briefly.'\""
-output = "show"
+agent = "Explain this briefly."
 
 [[action]]
 id = "translate"

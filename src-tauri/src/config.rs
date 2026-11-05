@@ -23,12 +23,15 @@ pub enum Output {
   Notify,
 }
 
+/// Runs `run` as a script, or with `agent` set, starts an agent session on that prompt instead.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Action {
   pub id: String,
   pub name: String,
   pub key: Option<String>,
+  #[serde(default)]
   pub run: String,
+  pub agent: Option<String>,
   #[serde(default = "notify")]
   pub output: Output,
 }
@@ -66,6 +69,9 @@ pub fn load(dir: &Path) -> Config {
   let entries = table.get("action").and_then(|value| value.as_array());
   for (index, entry) in entries.into_iter().flatten().enumerate() {
     match entry.clone().try_into::<Action>() {
+      Ok(action) if action.run.is_empty() && action.agent.is_none() => {
+        config.problems.push(format!("pluck.toml, action {}: needs `run` or `agent`", index + 1));
+      }
       Ok(action) => config.actions.push(action),
       Err(error) => config.problems.push(format!("pluck.toml, action {}: {}", index + 1, error.message())),
     }
@@ -78,20 +84,42 @@ fn broken(problem: String) -> Config {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Settings {
-  hotkey: String,
+pub struct Settings {
+  pub hotkey: String,
+  #[serde(default)]
+  pub agent: AgentSettings,
 }
 
-pub fn hotkey(dir: &Path) -> String {
+/// Which installed agent harness runs sessions, and how. Unset model and thinking use the harness's defaults.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSettings {
+  pub harness: String,
+  pub model: Option<String>,
+  pub thinking: Option<String>,
+  /// Where new sessions run, inside WSL when `wsl` is set.
+  pub folder: String,
+  /// Windows only: run the harness installed in WSL instead of the Windows one.
+  #[serde(default)]
+  pub wsl: bool,
+}
+
+impl Default for AgentSettings {
+  fn default() -> Self {
+    Self { harness: "pi".into(), model: None, thinking: None, folder: "~".into(), wsl: false }
+  }
+}
+
+pub fn settings(dir: &Path) -> Settings {
   fs::read_to_string(dir.join(SETTINGS))
     .ok()
-    .and_then(|text| serde_json::from_str::<Settings>(&text).ok())
-    .map_or_else(|| DEFAULT_HOTKEY.to_string(), |settings| settings.hotkey)
+    .and_then(|text| serde_json::from_str(&text).ok())
+    .unwrap_or_else(|| Settings { hotkey: DEFAULT_HOTKEY.into(), agent: AgentSettings::default() })
 }
 
-pub fn save_hotkey(dir: &Path, hotkey: &str) -> io::Result<()> {
+pub fn save_settings(dir: &Path, settings: &Settings) -> io::Result<()> {
   fs::create_dir_all(dir)?;
-  fs::write(dir.join(SETTINGS), serde_json::to_string_pretty(&Settings { hotkey: hotkey.to_string() })?)
+  fs::write(dir.join(SETTINGS), serde_json::to_string_pretty(settings)?)
 }
 
 fn write_defaults(dir: &Path) -> io::Result<()> {

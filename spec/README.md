@@ -25,7 +25,7 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 | ------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `trigger.hotkey`         | The hotkey is pressed in any app                 | Pluck grabs the selection and opens the menu                                      |
 | `trigger.hotkey-default` | No hotkey has been chosen                        | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
-| `trigger.tray`           | Pluck is running on Windows or macOS             | It has a tray icon; a click opens home, its menu has Open Pluck and Quit          |
+| `trigger.tray`           | Pluck is running on Windows or macOS             | It has a tray icon; a click opens home, its menu has Open Pluck, Agents and Quit  |
 | `trigger.start`          | Pluck is started, or started again while running | Home opens; a second copy never runs                                              |
 | `trigger.cli-menu`       | `pluck menu` is run                              | Same as pressing the hotkey                                                       |
 | `trigger.cli-run`        | `pluck run <id>` is run                          | The action runs on the current selection without showing the menu                 |
@@ -74,16 +74,17 @@ run = "scripts/explain.ps1"
 output = "show"
 ```
 
-| Rule                    | When                                            | Then                                                                                                                                         |
-| ----------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action.order`          | The menu opens                                  | Actions appear in the order they are listed in the config                                                                                    |
-| `action.defaults`       | Pluck starts and there is no `pluck.toml`       | It writes one with sample actions and their scripts                                                                                          |
-| `action.run`            | An action runs                                  | Its `run` command runs through the platform shell, with relative paths resolved against the config folder                                    |
-| `action.stdin`          | An action runs                                  | The selected text is written to the script's stdin                                                                                           |
-| `action.env`            | An action runs                                  | The script gets `PLUCK_APP`, `PLUCK_TITLE`, `PLUCK_URL` when known, and `PLUCK_TEXT` unless the text is too long for an environment variable |
-| `action.failure`        | The script exits non-zero                       | Pluck shows its stderr, or the exit code if stderr is empty                                                                                  |
-| `action.config-invalid` | The config can't be read or an entry is invalid | The menu shows one line naming the file and the problem; valid entries still work                                                            |
-| `action.config-reload`  | The config file changes                         | The next menu shows the change without restarting pluck                                                                                      |
+| Rule                    | When                                                | Then                                                                                                                                         |
+| ----------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action.order`          | The menu opens                                      | Actions appear in the order they are listed in the config                                                                                    |
+| `action.defaults`       | Pluck starts and there is no `pluck.toml`           | It writes one with sample actions and their scripts                                                                                          |
+| `action.run`            | An action runs                                      | Its `run` command runs through the platform shell, with relative paths resolved against the config folder                                    |
+| `action.stdin`          | An action runs                                      | The selected text is written to the script's stdin                                                                                           |
+| `action.env`            | An action runs                                      | The script gets `PLUCK_APP`, `PLUCK_TITLE`, `PLUCK_URL` when known, and `PLUCK_TEXT` unless the text is too long for an environment variable |
+| `action.failure`        | The script exits non-zero                           | Pluck shows its stderr, or the exit code if stderr is empty                                                                                  |
+| `action.config-invalid` | The config can't be read or an entry is invalid     | The menu shows one line naming the file and the problem; valid entries still work                                                            |
+| `action.agent`          | An action has `agent = "<prompt>"` instead of `run` | Picking it closes the menu and opens the agents window on a new session, sent the prompt followed by the text and where it came from         |
+| `action.config-reload`  | The config file changes                             | The next menu shows the change without restarting pluck                                                                                      |
 
 ## Output
 
@@ -111,6 +112,33 @@ A normal window with two tabs, Settings and Scripts. Closing it hides it; pluck 
 | `scripts.edit`          | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                       |
 | `settings.actions`      | The Scripts tab is open                           | Actions can be added, edited, reordered and removed, and the changes are written to `pluck.toml`                  |
 
+## Agents
+
+Agent sessions run an agent harness you already have installed, so its models, logins and extensions just work. Pi is the only harness so far. On Windows it runs the Windows install, or the one inside WSL when Run in WSL is checked.
+
+```toml
+[[action]]
+id = "explain"
+name = "Explain"
+key = "e"
+agent = "Explain this briefly."
+```
+
+| Rule                      | When                                                          | Then                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.window`            | Agents is picked in the tray or home, or an agent action runs | The agents window opens on the session; the sessions list on the left starts hidden and one click shows it                            |
+| `agent.harness`           | A session starts                                              | It runs the harness from Settings in the agent folder, with the chosen model and thinking level, or the harness's own defaults        |
+| `agent.new`               | New session is selected and a prompt is sent                  | A session starts on that prompt and is added to the list                                                                              |
+| `agent.sessions`          | The agents window is open                                     | Sessions pluck started are listed newest first, running ones with a spinner                                                           |
+| `agent.reopen`            | A session in the list is picked                               | It shows its history and takes new prompts, also after pluck restarted                                                                |
+| `agent.stream`            | The agent works                                               | Its reply streams in, and each tool call shows as a step that is running, done or failed                                              |
+| `agent.stop`              | Stop is clicked                                               | The current run is aborted; the session stays open                                                                                    |
+| `agent.exit`              | The harness can't start or stops                              | The session shows why, and the next prompt starts it again                                                                            |
+| `agent.dialogs`           | The harness asks a question through an extension dialog       | It is declined; the window can't show dialogs yet                                                                                     |
+| `settings.agent`          | The Settings tab is open                                      | It has the harness, model, thinking level and folder, plus Run in WSL on Windows; changes apply to new sessions                       |
+| `settings.agent-models`   | The model list is opened                                      | It lists the models in Pi's scope (`enabledModels`), or all Pi's models when it has none, after "Pi default"                          |
+| `settings.agent-thinking` | The thinking list is opened                                   | It lists "Pi default" and the levels the chosen model supports; changing to a model without the chosen level resets it to the default |
+
 ## Updates
 
 | Rule              | When                          | Then                                                                                                   |
@@ -130,9 +158,11 @@ A normal window with two tabs, Settings and Scripts. Closing it hides it; pluck 
 
 ## Glossary
 
-| Term              | Meaning                                                                      |
-| ----------------- | ---------------------------------------------------------------------------- |
-| Action            | One menu entry: a name, an optional key, a command to run and an output mode |
-| Selection         | The text highlighted in the app you were in when pluck was triggered         |
-| Config folder     | Where `pluck.toml` and your scripts live                                     |
-| Primary selection | On Linux, the text most recently highlighted, readable without copying       |
+| Term              | Meaning                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Action            | One menu entry: a name, an optional key, a command to run and an output mode, or a prompt for an agent |
+| Harness           | An installed agent program pluck drives, such as Pi                                                    |
+| Session           | One conversation with the harness, kept by the harness and listed by pluck                             |
+| Selection         | The text highlighted in the app you were in when pluck was triggered                                   |
+| Config folder     | Where `pluck.toml` and your scripts live                                                               |
+| Primary selection | On Linux, the text most recently highlighted, readable without copying                                 |

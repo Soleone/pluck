@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Agents } from "@/Agents";
 import { Home } from "@/Home";
 import { Popup } from "@/Popup";
 import { ThemePicker } from "@/components/soleone/theme-picker";
@@ -8,7 +9,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function App() {
   if (isTauri()) {
-    return getCurrentWindow().label === "home" ? (
+    const label = getCurrentWindow().label;
+    if (label === "agents")
+      return (
+        <div className="h-svh bg-background text-foreground">
+          <Agents />
+        </div>
+      );
+    return label === "home" ? (
       <div className="h-svh bg-background text-foreground">
         <Home />
       </div>
@@ -32,12 +40,17 @@ function Prototype() {
           <TabsList>
             <TabsTrigger value="menu">Menu</TabsTrigger>
             <TabsTrigger value="home">Home</TabsTrigger>
+            <TabsTrigger value="agents">Agents</TabsTrigger>
           </TabsList>
         </Tabs>
         <ThemePicker />
       </header>
       <main className="flex flex-1 items-center justify-center p-4">
-        {view === "menu" ? (
+        {view === "agents" ? (
+          <div className="h-180 w-full overflow-hidden rounded-xl border bg-background shadow-lg">
+            <Agents />
+          </div>
+        ) : view === "menu" ? (
           <div className="h-90 w-105 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg">
             <Popup />
           </div>

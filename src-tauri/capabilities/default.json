@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "What pluck's windows may call",
-  "windows": ["menu", "home"],
+  "windows": ["menu", "home", "agents"],
   "permissions": ["core:default"]
 }

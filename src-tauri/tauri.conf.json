@@ -31,6 +31,15 @@
         "minWidth": 560,
         "minHeight": 420,
         "visible": false
+      },
+      {
+        "label": "agents",
+        "title": "Pluck Agents",
+        "width": 960,
+        "height": 680,
+        "minWidth": 640,
+        "minHeight": 420,
+        "visible": false
       }
     ],
     "security": {
