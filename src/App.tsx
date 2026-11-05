@@ -55,7 +55,7 @@ function Prototype() {
             <Popup />
           </div>
         ) : (
-          <div className="h-135 w-180 overflow-hidden rounded-xl border bg-background shadow-lg">
+          <div className="h-180 w-200 overflow-hidden rounded-xl border bg-background shadow-lg">
             <Home />
           </div>
         )}

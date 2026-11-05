@@ -25,6 +25,9 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+
+const WINDOW_STATE: StateFlags = StateFlags::SIZE.union(StateFlags::POSITION).union(StateFlags::MAXIMIZED);
 
 /// Where the menu's text came from.
 #[derive(Clone, Copy, Default, PartialEq, Serialize)]
@@ -121,6 +124,13 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
+    // The menu opens at the cursor, so only home and agents come back where they were.
+    .plugin(
+      tauri_plugin_window_state::Builder::default()
+        .with_state_flags(WINDOW_STATE)
+        .with_denylist(&["menu"])
+        .build(),
+    )
     .manage(Mutex::new(Session::default()))
     .manage(Agents::default())
     .invoke_handler(tauri::generate_handler![
@@ -153,6 +163,8 @@ pub fn run() {
       }
       WindowEvent::CloseRequested { api, .. } => {
         api.prevent_close();
+        // The plugin only writes on a clean exit, which a Windows shutdown can skip.
+        let _ = window.app_handle().save_window_state(WINDOW_STATE);
         let _ = window.hide();
       }
       _ => {}

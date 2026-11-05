@@ -26,8 +26,8 @@
       {
         "label": "home",
         "title": "Pluck",
-        "width": 720,
-        "height": 540,
+        "width": 800,
+        "height": 720,
         "minWidth": 560,
         "minHeight": 420,
         "visible": false
