@@ -25,6 +25,7 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 | ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
 | `trigger.hotkey`         | The hotkey is pressed in any app     | Pluck grabs the selection and opens the menu                                      |
 | `trigger.hotkey-default` | No hotkey is configured              | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
+| `trigger.hotkey-config`  | `hotkey` is set in `pluck.toml`      | That hotkey is used from the next start of pluck                                  |
 | `trigger.tray`           | Pluck is running on Windows or macOS | It has a tray icon with Settings and Quit, and no window until triggered          |
 | `trigger.cli-menu`       | `pluck menu` is run                  | Same as pressing the hotkey                                                       |
 | `trigger.cli-run`        | `pluck run <id>` is run              | The action runs on the current selection without showing the menu                 |
@@ -39,7 +40,7 @@ What pluck reads from the app you were in when the hotkey was pressed.
 | Rule                     | When                                                                | Then                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `grab.text`              | Text is selected                                                    | The action receives exactly the selected text as plain text                                                             |
-| `grab.empty`             | Nothing is selected                                                 | The menu still opens, showing that there is no selection; actions that need text are disabled                           |
+| `grab.empty`             | Nothing is selected                                                 | The menu still opens, showing that nothing is selected, and its actions are disabled                                    |
 | `grab.context`           | Any grab                                                            | The action also receives the app name and window title                                                                  |
 | `grab.url`               | The selection was copied from a browser that reports its source URL | The action also receives that URL                                                                                       |
 | `grab.clipboard-restore` | Pluck had to copy the selection through the clipboard               | The clipboard holds what it held before, once the grab is done                                                          |
@@ -73,15 +74,16 @@ run = "scripts/explain.ps1"
 output = "show"
 ```
 
-| Rule                    | When                                            | Then                                                                                                      |
-| ----------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `action.order`          | The menu opens                                  | Actions appear in the order they are listed in the config                                                 |
-| `action.run`            | An action runs                                  | Its `run` command runs through the platform shell, with relative paths resolved against the config folder |
-| `action.stdin`          | An action runs                                  | The selected text is written to the script's stdin                                                        |
-| `action.env`            | An action runs                                  | The script gets `PLUCK_TEXT`, `PLUCK_APP`, `PLUCK_TITLE` and, when known, `PLUCK_URL`                     |
-| `action.failure`        | The script exits non-zero                       | Pluck shows its stderr, or the exit code if stderr is empty                                               |
-| `action.config-invalid` | The config can't be read or an entry is invalid | The menu shows one line naming the file and the problem; valid entries still work                         |
-| `action.config-reload`  | The config file changes                         | The next menu shows the change without restarting pluck                                                   |
+| Rule                    | When                                            | Then                                                                                                                                         |
+| ----------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action.order`          | The menu opens                                  | Actions appear in the order they are listed in the config                                                                                    |
+| `action.defaults`       | Pluck starts and there is no `pluck.toml`       | It writes one with sample actions and their scripts                                                                                          |
+| `action.run`            | An action runs                                  | Its `run` command runs through the platform shell, with relative paths resolved against the config folder                                    |
+| `action.stdin`          | An action runs                                  | The selected text is written to the script's stdin                                                                                           |
+| `action.env`            | An action runs                                  | The script gets `PLUCK_APP`, `PLUCK_TITLE`, `PLUCK_URL` when known, and `PLUCK_TEXT` unless the text is too long for an environment variable |
+| `action.failure`        | The script exits non-zero                       | Pluck shows its stderr, or the exit code if stderr is empty                                                                                  |
+| `action.config-invalid` | The config can't be read or an entry is invalid | The menu shows one line naming the file and the problem; valid entries still work                                                            |
+| `action.config-reload`  | The config file changes                         | The next menu shows the change without restarting pluck                                                                                      |
 
 ## Output
 
@@ -89,7 +91,7 @@ Each action's `output` says what happens with the script's stdout.
 
 | Rule             | When                 | Then                                                                                                                           |
 | ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives; `Esc` closes it and stops the script              |
+| `output.show`    | `output = "show"`    | A small panel opens at the menu's position and streams stdout as it arrives; `Esc` closes it                                   |
 | `output.copy`    | `output = "copy"`    | Stdout is put on the clipboard and a short confirmation appears                                                                |
 | `output.notify`  | `output = "notify"`  | The menu closes at once, the script runs in the background, and its first line of stdout (or "Done") appears as a notification |
 | `output.replace` | `output = "replace"` | Stdout replaces the selection in the original app                                                                              |

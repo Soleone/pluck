@@ -6,7 +6,8 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
 
 - `pnpm dev:web` runs the UI in a browser with sample data. Use it for UI work.
 - `pnpm dev` runs the native app. It builds for the OS it runs on, so for Windows: run `win-sync` here (copies to `D:\src\wsl\pluck`, profile in `~/.config/win-sync/pluck.ignore`), then `pnpm install` and `pnpm dev` there in PowerShell.
-- WSL lacks the system libraries for a Linux build, so `cargo check` in `src-tauri` fails here.
+- `pnpm build:tauri` builds the app and installers. On Windows the plain exe is `src-tauri\target\release\pluck.exe`.
+- WSL lacks the system libraries for a Linux build. To type-check the Windows code from WSL, run `cargo check --target x86_64-pc-windows-gnu` in `src-tauri` with an `x86_64-w64-mingw32-windres` on PATH; a stub that only touches its `-o` file is enough, since checking links nothing.
 
 ## Where things are
 

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
-  "windows": ["main"],
+  "description": "What the menu window may call",
+  "windows": ["menu"],
   "permissions": ["core:default"]
 }

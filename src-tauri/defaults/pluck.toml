@@ -1,0 +1,51 @@
+# Pluck reads this file each time the menu opens. Each [[action]] is one menu entry:
+#
+#   id      stable name for the action
+#   name    what the menu shows
+#   key     optional letter that runs it straight from the menu
+#   run     command line, run by cmd.exe in this folder. It gets the selected text on stdin and
+#           in PLUCK_TEXT (unless it's very long), plus PLUCK_APP and PLUCK_TITLE.
+#   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
+#           "notify" (the default) runs in the background and shows its first line.
+
+# Restart pluck after changing the hotkey.
+hotkey = "Ctrl+Alt+Space"
+
+[[action]]
+id = "explain"
+name = "Explain (Claude in WSL)"
+key = "e"
+run = "wsl.exe -e bash -lc \"claude -p 'Explain this briefly.'\""
+output = "show"
+
+[[action]]
+id = "translate"
+name = "Translate to English"
+key = "t"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\translate.ps1'
+
+[[action]]
+id = "search"
+name = "Search the web"
+key = "s"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\search.ps1'
+
+[[action]]
+id = "bookmark"
+name = "Save as bookmark"
+key = "b"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\bookmark.ps1'
+
+[[action]]
+id = "count"
+name = "Count words"
+key = "w"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\count.ps1'
+output = "show"
+
+[[action]]
+id = "upper"
+name = "Uppercase"
+key = "u"
+run = 'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upper.ps1'
+output = "copy"
