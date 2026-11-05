@@ -483,18 +483,14 @@ fn show_agents(app: AppHandle) {
   show_window(&app, "agents");
 }
 
-/// The action's prompt, then the text and where it came from.
+/// The action's prompt, then the text and where it came from. The active window is named even
+/// when the text came from the clipboard, since actions like bookmarking are about the window.
 fn agent_prompt(prompt: &str, opened: &Opened) -> String {
-  let mut source = if opened.clipboard {
-    "the clipboard".to_string()
-  } else if opened.title.is_empty() {
-    opened.app.clone()
-  } else {
-    format!("{} ({})", opened.app, opened.title)
-  };
+  let mut window = if opened.title.is_empty() { opened.app.clone() } else { format!("{} ({})", opened.app, opened.title) };
   if !opened.url.is_empty() {
-    source = format!("{source} at {}", opened.url);
+    window = format!("{window} at {}", opened.url);
   }
+  let source = if opened.clipboard { format!("the clipboard, while {window} was active") } else { window };
   format!("{prompt}\n\nText from {source}:\n\n<text>\n{}\n</text>", opened.text)
 }
 

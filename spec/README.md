@@ -38,16 +38,16 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 
 What pluck reads from the app you were in when the hotkey was pressed.
 
-| Rule                     | When                                                                 | Then                                                                                                                    |
-| ------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `grab.text`              | Text is selected                                                     | The action receives exactly the selected text as plain text                                                             |
-| `grab.empty`             | Nothing is selected                                                  | The menu opens on the clipboard's text and says so; with no text there either, home opens                               |
-| `grab.context`           | Any grab                                                             | The action also receives the app name and window title                                                                  |
-| `grab.url`               | The selection was copied from a browser that reports its web address | The action also receives that address; other source addresses, like the files of apps built on Electron, are left out   |
-| `grab.clipboard-restore` | Pluck had to copy the selection through the clipboard                | The clipboard holds what it held before, once the grab is done                                                          |
-| `grab.windows`           | Windows                                                              | UI Automation is asked for the selection first; if the app doesn't answer, pluck sends `Ctrl+C` and reads the clipboard |
-| `grab.macos`             | macOS                                                                | The Accessibility API is asked first; if the app doesn't answer, pluck sends `Cmd+C`                                    |
-| `grab.linux`             | Linux (Wayland)                                                      | The primary selection is read; the clipboard is never touched                                                           |
+| Rule                     | When                                                                 | Then                                                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grab.text`              | Text is selected                                                     | The action receives exactly the selected text as plain text                                                                                        |
+| `grab.empty`             | Nothing is selected                                                  | The menu opens on the clipboard's text and says so, and actions still learn the active app and window title; with no text there either, home opens |
+| `grab.context`           | Any grab                                                             | The action also receives the app name and window title                                                                                             |
+| `grab.url`               | The selection was copied from a browser that reports its web address | The action also receives that address; other source addresses, like the files of apps built on Electron, are left out                              |
+| `grab.clipboard-restore` | Pluck had to copy the selection through the clipboard                | The clipboard holds what it held before, once the grab is done                                                                                     |
+| `grab.windows`           | Windows                                                              | UI Automation is asked for the selection first; if the app doesn't answer, pluck sends `Ctrl+C` and reads the clipboard                            |
+| `grab.macos`             | macOS                                                                | The Accessibility API is asked first; if the app doesn't answer, pluck sends `Cmd+C`                                                               |
+| `grab.linux`             | Linux (Wayland)                                                      | The primary selection is read; the clipboard is never touched                                                                                      |
 
 ## Menu
 
