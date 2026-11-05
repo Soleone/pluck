@@ -5,6 +5,7 @@ import {
   dialogOf,
   emptyTranscript,
   modelChoices,
+  quoteOf,
   type PiModel,
   type PiRecord,
 } from "./pi";
@@ -136,4 +137,20 @@ test("settings.agent-thinking: each model shows the level Pi starts it with", ()
   const [sonnet, gpt4o, gpt5] = modelChoices(models, settings);
   expect([sonnet?.thinking, gpt4o?.thinking, gpt5?.thinking]).toEqual(["high", "off", "max"]);
   expect(modelChoices(models, null)[0]?.thinking).toBe("medium");
+});
+
+test("agent.quote: a prompt pluck built shows as the request and the text it is about", () => {
+  const prompt =
+    "Explain this briefly.\n\nText from chrome (Steam - Google Chrome) at https://store.steampowered.com/:\n\n<text>\nQueen's\nDomain\n</text>";
+  expect(quoteOf(prompt)).toEqual({
+    text: "Explain this briefly.",
+    quote: {
+      text: "Queen's\nDomain",
+      source: "Steam - Google Chrome",
+      href: "https://store.steampowered.com/",
+    },
+  });
+  const clipboard = quoteOf("Fix\n\nText from the clipboard:\n\n<text>\nteh\n</text>");
+  expect(clipboard.quote).toEqual({ text: "teh", source: "Clipboard", href: undefined });
+  expect(quoteOf("Just a question")).toEqual({ text: "Just a question" });
 });

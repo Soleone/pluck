@@ -130,7 +130,9 @@ mod platform {
     }
     let html = String::from_utf8_lossy(&html);
     let header = html.lines().take_while(|line| !line.starts_with('<'));
-    header.filter_map(|line| line.strip_prefix("SourceURL:")).map(|url| url.trim().to_string()).next().unwrap_or_default()
+    let url = header.filter_map(|line| line.strip_prefix("SourceURL:")).map(str::trim).next().unwrap_or_default();
+    // Electron apps like Mailspring name their own files here, which says nothing about the text.
+    if url.starts_with("http://") || url.starts_with("https://") { url.to_string() } else { String::new() }
   }
 
   /// A shortcut sent while the hotkey's Alt is still held arrives as Ctrl+Alt+C.

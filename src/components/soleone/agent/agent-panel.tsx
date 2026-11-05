@@ -1,6 +1,6 @@
 import { memo, useId, useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
-import { ArrowUp, Square, Wrench } from "lucide-react"
+import { ArrowUp, Square, TextQuote, Wrench } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
@@ -27,10 +27,19 @@ export type AgentTool = {
   data?: unknown
 }
 
+/** Text a user message is about, such as a selection, shown above the message and open at first. */
+export type AgentQuote = {
+  text: string
+  /** Where the text came from, like "Mail · Your order". */
+  source: string
+  href?: string
+}
+
 export type AgentMessage = {
   id: string
   role: "user" | "assistant"
   text: string
+  quote?: AgentQuote
   tools?: AgentTool[]
 }
 
@@ -101,6 +110,29 @@ function ToolStep({ tool }: { tool: AgentTool }) {
   )
 }
 
+function QuoteStep({ quote }: { quote: AgentQuote }) {
+  return (
+    <Trace>
+      <TraceCollapsible defaultOpen>
+        <TraceCollapsibleTrigger>
+          <TraceLine>
+            <TraceIcon><TextQuote /></TraceIcon>
+            <TraceTitle>{quote.source}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent>
+          <p className="max-h-48 overflow-auto whitespace-pre-wrap text-foreground">{quote.text}</p>
+          {quote.href && (
+            <a href={quote.href} target="_blank" rel="noopener noreferrer" className="block truncate text-xs underline underline-offset-4">
+              {quote.href}
+            </a>
+          )}
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
+  )
+}
+
 /** Memoized: typing in the composer or host state changes would otherwise re-parse every reply. */
 const AssistantText = memo(function AssistantText({ text }: { text: string }) {
   return (
@@ -167,9 +199,12 @@ export function AgentPanel({
                     <Message align={turn.role === "user" ? "end" : "start"}>
                       <MessageContent>
                         {turn.role === "user" ? (
-                          <Bubble align="end" variant="muted">
-                            <BubbleContent>{turn.messages[0].text}</BubbleContent>
-                          </Bubble>
+                          <div className="flex min-w-0 flex-col items-end gap-2">
+                            {turn.messages[0].quote && <QuoteStep quote={turn.messages[0].quote} />}
+                            <Bubble align="end" variant="muted">
+                              <BubbleContent className="whitespace-pre-wrap">{turn.messages[0].text}</BubbleContent>
+                            </Bubble>
+                          </div>
                         ) : (
                           <div className="flex min-w-0 flex-col gap-3">
                             {blocksOf(turn.messages, renderTool).map((block, index) =>

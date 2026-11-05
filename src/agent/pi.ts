@@ -120,7 +120,7 @@ export function agentMessages({ messages, busy }: Transcript): AgentMessage[] {
 
   return messages.flatMap((message, index): AgentMessage[] => {
     const id = String(index);
-    if (message.role === "user") return [{ id, role: "user", text: textOf(message.content) }];
+    if (message.role === "user") return [{ id, role: "user", ...quoteOf(textOf(message.content)) }];
     if (message.role !== "assistant") return [];
     const tools = message.content.flatMap((part) =>
       part.type === "toolCall" ? [toolOf(part, results.get(part.id), busy)] : [],
@@ -131,6 +131,20 @@ export function agentMessages({ messages, busy }: Transcript): AgentMessage[] {
       .join("\n\n");
     return [{ id, role: "assistant", text, tools }];
   });
+}
+
+/** What pluck's agent actions send (see `agent_prompt` in lib.rs). */
+const pluckPrompt = /^([\s\S]*?)\n\nText from (.+?)(?: at (\S+))?:\n\n<text>\n([\s\S]*)\n<\/text>$/;
+
+/** Splits a prompt pluck built into the request and the text it is about. */
+export function quoteOf(prompt: string): Pick<AgentMessage, "text" | "quote"> {
+  const match = pluckPrompt.exec(prompt);
+  if (!match) return { text: prompt };
+  const [, request = "", from = "", href, text = ""] = match;
+  // "app (window title)"; the title usually names the app too.
+  const source =
+    from === "the clipboard" ? "Clipboard" : (/^\S+ \((.*)\)$/.exec(from)?.[1] ?? from);
+  return { text: request, quote: { text, source, href } };
 }
 
 function textOf(content: string | Part[]) {

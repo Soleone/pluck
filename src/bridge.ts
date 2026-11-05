@@ -385,9 +385,9 @@ function prototype(): Bridge {
       if (command.type === "get_messages") {
         const messages =
           id === "sample"
-            ? cannedRun(sample.text).flatMap((record) =>
-                record.type === "message_end" ? [record.message] : [],
-              )
+            ? cannedRun(
+                `Explain this briefly.\n\nText from ${sample.app} (${sample.title}) at ${sample.url}:\n\n<text>\n${sample.text}\n</text>`,
+              ).flatMap((record) => (record.type === "message_end" ? [record.message] : []))
             : [];
         reply(id, [
           { type: "response", command: "get_messages", success: true, data: { messages } },
