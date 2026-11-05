@@ -17,6 +17,10 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
 
 `pnpm release` bumps the version, writes CHANGELOG.md and pushes a `v*` tag. `.github/workflows/release.yml` then builds the signed Windows installer and publishes it with `latest.json`, which the in-app updater reads from `github.com/Soleone/pluck`. The signing key is in `$DATA/secrets/pluck` and in the repo's Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Local `pnpm build:tauri` builds an unsigned installer, which is fine for testing.
 
+## Demo and portfolio
+
+The browser build (`pnpm dev:web`) doubles as the public demo at https://pluck.soleone.xyz, the Vercel project `pluck-demo`, which is not connected to git. Redeploy after UI changes: `pnpm build && cd dist && vercel link --yes --project pluck-demo && vercel deploy --prod --yes` (the build wipes `dist/.vercel`). `showcase.json` holds what the portfolio shows; re-record the README loop with `pnpm media:capture --url <preview url>` once what it shows changes.
+
 ## Where things are
 
 - [spec/](spec/README.md) says what the app does, as rule tables. Read it before changing behavior.
