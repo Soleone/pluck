@@ -26,13 +26,25 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
+/// Where the menu's text came from.
+#[derive(Clone, Copy, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum Source {
+  #[default]
+  Selection,
+  /// Nothing was selected, so the clipboard stands in.
+  Clipboard,
+  /// Nothing was selected in a browser, so its address bar stands in.
+  #[cfg_attr(not(windows), allow(dead_code))]
+  AddressBar,
+}
+
 /// What the menu shows for one trigger.
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Opened {
   text: String,
-  /// Nothing was selected, so `text` is what the clipboard held.
-  clipboard: bool,
+  source: Source,
   app: String,
   title: String,
   /// The page the text was copied from, when the browser says so.
@@ -177,30 +189,30 @@ fn open_menu(app: &AppHandle) {
     return;
   }
   let target = grab::target();
-  #[allow(unused_mut)]
-  let mut selection = grab::copy_selection();
+  let mut selection = grab::copy_selection().unwrap_or_default();
+  let mut source = Source::Selection;
   #[cfg(windows)]
-  if let Ok(found) = &mut selection
-    && found.text.is_empty()
-    && grab::is_browser(&target.app)
-    && config::settings(&config_dir(app)).browser_url
-  {
-    found.url = grab::address_bar_url();
+  if selection.text.is_empty() && grab::is_browser(&target.app) && config::settings(&config_dir(app)).browser_url {
+    selection.url = grab::address_bar_url();
+    selection.text = selection.url.clone();
+    source = Source::AddressBar;
   }
   GRABBING.store(false, Ordering::SeqCst);
 
   // With nothing selected the clipboard stands in; with that empty too, home opens.
-  let selection = selection.unwrap_or_default();
-  let clipboard = selection.text.is_empty();
-  let text = if clipboard { grab::clipboard_text() } else { selection.text };
-  if text.is_empty() {
+  if selection.text.is_empty() {
+    selection.text = grab::clipboard_text();
+    source = Source::Clipboard;
+  }
+  if selection.text.is_empty() {
     return show_window(app, "home");
   }
+  let text = selection.text;
   let dir = config_dir(app);
   let config = config::load(&dir);
   let opened = Opened {
     text,
-    clipboard,
+    source,
     app: target.app.clone(),
     title: target.title.clone(),
     url: selection.url,
@@ -278,15 +290,15 @@ fn ask(app: AppHandle, session: State<Mutex<Session>>, question: String, continu
   send_to_agents(&app, request);
 }
 
-/// Puts a `replace` action's result in place of the selection, or on the clipboard when the text
-/// came from there.
+/// Puts a `replace` action's result in place of the selection, or on the clipboard when nothing was
+/// selected.
 #[tauri::command]
 fn replace(app: AppHandle, text: String) {
   let _ = menu_window(&app).hide();
   thread::spawn(move || {
     let session = app.state::<Mutex<Session>>();
     let session = session.lock().unwrap();
-    let result = if session.opened.clipboard {
+    let result = if session.opened.source != Source::Selection {
       grab::set_clipboard(&text)
     } else {
       grab::paste(&session.target, &text)
@@ -510,7 +522,7 @@ fn agent_prompt(prompt: &str, opened: &Opened) -> String {
   if !opened.url.is_empty() {
     window = format!("{window} at {}", opened.url);
   }
-  let source = if opened.clipboard { format!("the clipboard, while {window} was active") } else { window };
+  let source = if opened.source == Source::Clipboard { format!("the clipboard, while {window} was active") } else { window };
   format!("{prompt}\n\nText from {source}:\n\n<text>\n{}\n</text>", opened.text)
 }
 

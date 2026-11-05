@@ -51,8 +51,8 @@ export type AgentCatalog = {
 /** What the menu shows for one trigger. */
 export type Opened = {
   text: string;
-  /** Nothing was selected, so `text` is what the clipboard held. */
-  clipboard: boolean;
+  /** Where `text` came from: with nothing selected, the clipboard or a browser's address bar. */
+  source: "selection" | "clipboard" | "addressBar";
   app: string;
   title: string;
   /** The page the text was copied from, when the browser says so; else empty. */
@@ -203,7 +203,7 @@ const promptAction = (id: string, name: string, key: string, agent: string): Act
 
 const sample: Opened = {
   text: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
-  clipboard: false,
+  source: "selection",
   app: "chrome",
   title: "Ludwig Wittgenstein - Wikipedia",
   url: "https://en.wikipedia.org/wiki/Ludwig_Wittgenstein",

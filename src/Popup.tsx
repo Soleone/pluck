@@ -176,7 +176,8 @@ export function Popup() {
         <p className="text-xs text-muted-foreground">
           {replacement !== null && (
             <>
-              <Kbd>Enter</Kbd> {opened.clipboard ? "to copy" : "to replace the selection"} ·{" "}
+              <Kbd>Enter</Kbd>{" "}
+              {opened.source === "selection" ? "to replace the selection" : "to copy"} ·{" "}
             </>
           )}
           <Kbd>Esc</Kbd> to {replacement !== null ? "cancel" : "close"}
@@ -191,7 +192,7 @@ export function Popup() {
     <Command key={openCount} data-menu data-picking={picked !== null} className="h-full">
       <div className="px-2 pt-1 pb-2">
         <p className="line-clamp-2 text-sm">{opened.text}</p>
-        {opened.clipboard ? (
+        {opened.source === "clipboard" ? (
           <p className="text-xs text-muted-foreground">From the clipboard</p>
         ) : (
           opened.app && (
