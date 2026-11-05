@@ -156,3 +156,9 @@ test("agent.quote: a prompt pluck built shows as the request and the text it is 
   expect(clipboard.quote).toEqual({ text: "teh", source: "Clipboard", href: undefined });
   expect(quoteOf("Just a question")).toEqual({ text: "Just a question" });
 });
+
+test("agent.model: get_state sets the model and thinking level the session runs with", () => {
+  const state = { model: { id: "gpt", name: "GPT", provider: "openai" }, thinkingLevel: "high" };
+  const record = { type: "response", command: "get_state", success: true, data: state };
+  expect(replay([record]).model).toEqual({ name: "GPT", thinking: "high" });
+});

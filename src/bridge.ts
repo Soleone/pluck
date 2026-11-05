@@ -382,6 +382,10 @@ function prototype(): Bridge {
         );
       }
       if (command.type === "abort") reply(id, [{ type: "agent_settled" }]);
+      if (command.type === "get_state") {
+        const data = { model: { name: "GPT-6.1 Sol" }, thinkingLevel: "high" };
+        reply(id, [{ type: "response", command: "get_state", success: true, data }]);
+      }
       if (command.type === "get_messages") {
         const messages =
           id === "sample"

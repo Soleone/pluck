@@ -57,8 +57,14 @@ export type PiSettings = {
   modelThinkingLevels?: Record<string, string>;
 };
 
-/** One session as pluck knows it: Pi's messages so far, whether it is working, and why it stopped. */
-export type Transcript = { messages: PiMessage[]; busy: boolean; error?: string };
+/** One session as pluck knows it: Pi's messages so far, whether it is working, why it stopped,
+ * and the model and thinking level it runs with. */
+export type Transcript = {
+  messages: PiMessage[];
+  busy: boolean;
+  error?: string;
+  model?: { name: string; thinking: string };
+};
 
 export const emptyTranscript: Transcript = { messages: [], busy: false };
 
@@ -83,6 +89,12 @@ export function applyRecord(transcript: Transcript, record: PiRecord): Transcrip
       if (!record.success) return { ...transcript, error: record.error };
       if (record.command === "get_messages")
         return { ...transcript, messages: (record.data as { messages: PiMessage[] }).messages };
+      if (record.command === "get_state") {
+        const state = record.data as { model?: { name: string }; thinkingLevel: string };
+        return state.model
+          ? { ...transcript, model: { name: state.model.name, thinking: state.thinkingLevel } }
+          : transcript;
+      }
       return transcript;
     default:
       return transcript;

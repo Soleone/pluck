@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, PanelLeft, Plus, X } from "lucide-react";
+import { Brain, LoaderCircle, PanelLeft, Plus, X } from "lucide-react";
 import { AgentDialog, type DialogAnswer } from "@/AgentDialog";
 import { ago } from "@/agent/ago";
 import { bridge, type AgentSession } from "@/bridge";
@@ -12,6 +12,7 @@ import {
   type Transcript,
 } from "@/agent/pi";
 import { AgentPanel } from "@/components/soleone/agent";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -84,6 +85,7 @@ export function Agents() {
     if (running.current.has(id)) return;
     await bridge.agentStart(id, title);
     running.current.add(id);
+    await bridge.agentSend(id, { type: "get_state" });
   }
 
   async function start(title: string, text: string) {
@@ -211,6 +213,16 @@ export function Agents() {
           <span className="truncate font-medium">{current?.title ?? "New session"}</span>
           {current && current.lastActive > 0 && (
             <span className="shrink-0 text-muted-foreground">{ago(current.lastActive)}</span>
+          )}
+          {transcript.model && (
+            <Badge
+              variant="secondary"
+              className="ml-auto"
+              title={`Model ${transcript.model.name}, thinking ${transcript.model.thinking}`}
+            >
+              <Brain />
+              {transcript.model.name} · {transcript.model.thinking}
+            </Badge>
           )}
         </header>
         <div className="flex min-h-0 flex-1 flex-col p-4">
