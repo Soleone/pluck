@@ -8,7 +8,14 @@ type Part =
 
 type PiMessage =
   | { role: "user"; content: string | Part[] }
-  | { role: "assistant"; content: Part[]; stopReason?: string; errorMessage?: string }
+  | {
+      role: "assistant";
+      content: Part[];
+      stopReason?: string;
+      errorMessage?: string;
+      provider?: string;
+      model?: string;
+    }
   | { role: "toolResult"; toolCallId: string; content: Part[]; isError: boolean }
   // System prompts, bash runs and extension entries aren't shown.
   | { role: "system" | "bashExecution" | "custom" };
@@ -125,7 +132,13 @@ export function agentMessages({ messages, busy }: Transcript): AgentMessage[] {
     const tools = message.content.flatMap((part) =>
       part.type === "toolCall" ? [toolOf(part, results.get(part.id), busy)] : [],
     );
-    const failure = message.stopReason === "error" ? message.errorMessage : undefined;
+    // Pi's errors, like "Connection error.", don't say which model failed.
+    const failure =
+      message.stopReason === "error"
+        ? [message.errorMessage, message.model && `(${message.provider}/${message.model})`]
+            .filter(Boolean)
+            .join(" ")
+        : undefined;
     const text = [textOf(message.content), failure && `**Error:** ${failure}`]
       .filter(Boolean)
       .join("\n\n");

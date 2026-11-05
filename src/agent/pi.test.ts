@@ -64,7 +64,7 @@ test("agent.stream: a tool call without a result after the run is shown as faile
   ]);
 });
 
-test("agent.stream: a provider error shows in the reply", () => {
+test("agent.stream: a provider error shows in the reply, with the model that failed", () => {
   const transcript = replay([
     {
       type: "message_start",
@@ -72,11 +72,13 @@ test("agent.stream: a provider error shows in the reply", () => {
         role: "assistant",
         content: [],
         stopReason: "error",
-        errorMessage: "Rate limited",
+        errorMessage: "Connection error.",
+        provider: "tabby",
+        model: "qwen",
       },
     },
   ]);
-  expect(agentMessages(transcript)[0]?.text).toBe("**Error:** Rate limited");
+  expect(agentMessages(transcript)[0]?.text).toBe("**Error:** Connection error. (tabby/qwen)");
 });
 
 test("agent.reopen: get_messages replaces the history and hides system messages", () => {
