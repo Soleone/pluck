@@ -14,7 +14,7 @@ import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -230,12 +230,12 @@ function GeneralSetting({
             checked={state.wsl}
             onCheckedChange={(wsl) => change({ ...state, wsl }, bridge.setWsl(wsl))}
           />
-          <div className="flex flex-col gap-0.5">
+          <FieldContent>
             <FieldLabel htmlFor="wsl">Run in WSL</FieldLabel>
             <FieldDescription>
               Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths.
             </FieldDescription>
-          </div>
+          </FieldContent>
         </Field>
       )}
       {state.platform === "windows" && (
@@ -247,7 +247,7 @@ function GeneralSetting({
               change({ ...state, browserUrl }, bridge.setBrowserUrl(browserUrl))
             }
           />
-          <div className="flex flex-col gap-0.5">
+          <FieldContent>
             <FieldLabel htmlFor="browser-url">
               In browsers, grab the URL when nothing is selected
             </FieldLabel>
@@ -255,7 +255,7 @@ function GeneralSetting({
               Pluck presses Ctrl+L, Ctrl+C and Esc to copy the address, then puts your clipboard
               back.
             </FieldDescription>
-          </div>
+          </FieldContent>
         </Field>
       )}
       {problem && (
