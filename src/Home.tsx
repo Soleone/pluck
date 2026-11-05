@@ -10,6 +10,7 @@ import { modelChoices } from "@/agent/pi";
 import { ChoiceField } from "@/ChoiceField";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Badge } from "@/components/ui/badge";
+import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -44,10 +45,16 @@ export function Home() {
             <img src="/favicon.svg" alt="" className="size-5" />
             Pluck
           </span>
-          <TabsList>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="scripts">Scripts</TabsTrigger>
-          </TabsList>
+          <span className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+              <TabsTrigger value="scripts">Scripts</TabsTrigger>
+            </TabsList>
+            <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
+              <Bot />
+              Agents
+            </Button>
+          </span>
         </header>
         <TabsContent value="settings" className="min-h-0 overflow-auto">
           <div className="flex flex-col gap-4">
@@ -289,9 +296,6 @@ function AgentSetting({
             What agent actions and new sessions run. Running sessions keep their own.
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
-          Open agents
-        </Button>
       </div>
       <div className="grid grid-cols-5 gap-3">
         <ChoiceField

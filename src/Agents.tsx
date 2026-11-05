@@ -142,7 +142,11 @@ export function Agents() {
 
   return (
     <SidebarProvider className="h-full min-h-0">
-      {sessionsShown && (
+      {/* Slides in and out; inert keeps the hidden list out of the tab order. */}
+      <div
+        inert={!sessionsShown}
+        className={`overflow-hidden transition-all duration-200 ease-out ${sessionsShown ? "w-64" : "w-0"}`}
+      >
         <Sidebar collapsible="none">
           <SidebarHeader>
             <SidebarMenu>
@@ -192,7 +196,7 @@ export function Agents() {
             </SidebarGroup>
           </SidebarContent>
         </Sidebar>
-      )}
+      </div>
       <SidebarInset className="min-h-0">
         <header className="flex items-center gap-2 px-2 pt-2">
           <Button
