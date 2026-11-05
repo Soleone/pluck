@@ -252,7 +252,7 @@ mod tests {
   }
 
   #[test]
-  // menu-tab.edit
+  // actions-tab.edit
   fn menu_tab_edit_keeps_comments_and_writes_order() {
     let dir = dir_with(
       "keeps",
@@ -279,7 +279,7 @@ mod tests {
   }
 
   #[test]
-  // menu-tab.agent
+  // actions-tab.agent
   fn menu_tab_agent_keeps_model_thinking_and_output() {
     let dir = dir_with("agent", "");
     let mut quick = prompt("q", "Define this.");
@@ -303,7 +303,7 @@ mod tests {
   }
 
   #[test]
-  // menu-tab.edit
+  // actions-tab.edit
   fn menu_tab_edit_refuses_while_an_entry_is_invalid() {
     let dir = dir_with("invalid", "[[action]]\nid = \"a\"\nname = \"A\"\n");
     assert!(save_actions(&dir, &[]).unwrap_err().starts_with("Fix pluck.toml first"));

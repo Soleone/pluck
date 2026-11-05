@@ -30,7 +30,7 @@ const OUTPUTS = [
 const PROMPT_OUTPUTS = [{ value: "session", label: "Open an agent session" }, ...OUTPUTS];
 
 /** The menu's actions, editable here and saved to pluck.toml. */
-export function MenuTab({
+export function ActionsTab({
   state,
   catalog,
   onChange,

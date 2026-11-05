@@ -1,7 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { bridge, type AgentSettings, type HomeState, type Update } from "@/bridge";
 import { ChoiceField } from "@/ChoiceField";
-import { MenuTab } from "@/MenuTab";
+import { ActionsTab } from "@/ActionsTab";
 import {
   ModelPicker,
   effectiveModel,
@@ -62,7 +62,7 @@ export function Home() {
           <span className="flex items-center gap-2">
             <TabsList>
               <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="menu">Menu</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
             </TabsList>
             <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
               <Bot />
@@ -87,8 +87,8 @@ export function Home() {
             <p className="text-muted-foreground">Pluck {state.version}</p>
           </div>
         </TabsContent>
-        <TabsContent value="menu" className="min-h-0 overflow-auto">
-          <MenuTab
+        <TabsContent value="actions" className="min-h-0 overflow-auto">
+          <ActionsTab
             state={state}
             catalog={catalog}
             onChange={(actions) => setState({ ...state, actions })}
