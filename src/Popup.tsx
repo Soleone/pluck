@@ -17,9 +17,14 @@ const ASK = "pluck:ask";
 /** How long a picked row plays its press before the action runs and the menu moves on. */
 const PICK_MS = 160;
 
+/** Scripts that show or replace output, and prompts that aren't interactive, answer in the menu. */
+const showsPanel = (action: Action) =>
+  action.agent ? !action.interactive : action.output === "show" || action.output === "replace";
+
 type Result = { action: Action; run: number; text: string; done: boolean; error: string | null };
 
-/** The menu that opens on the hotkey, and the panel a `show` or `replace` action streams into. */
+/** The menu that opens on the hotkey, and the panel a `show` or `replace` action, or a one-off
+ * prompt, streams into. */
 export function Popup() {
   const [opened, setOpened] = useState<Opened | null>(null);
   const [openCount, setOpenCount] = useState(0);
@@ -107,8 +112,7 @@ export function Popup() {
   function start(action: Action) {
     pick(action.id, () => {
       const run = ++runCount.current;
-      if (action.output === "show" || action.output === "replace")
-        setResult({ action, run, text: "", done: false, error: null });
+      if (showsPanel(action)) setResult({ action, run, text: "", done: false, error: null });
       bridge.run(action.id, run, continuing).catch(fail);
     });
   }

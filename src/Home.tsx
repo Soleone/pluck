@@ -1,15 +1,15 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import {
-  bridge,
-  type AgentCatalog,
-  type AgentSettings,
-  type HomeState,
-  type Update,
-} from "@/bridge";
-import { modelChoices } from "@/agent/pi";
-import { AgentModelFields, type AgentModelChoice } from "@/components/soleone/agent";
+import { bridge, type AgentSettings, type HomeState, type Update } from "@/bridge";
 import { ChoiceField } from "@/ChoiceField";
 import { MenuTab } from "@/MenuTab";
+import {
+  ModelPicker,
+  effectiveModel,
+  loaded as loadedCatalog,
+  modelName,
+  piStart,
+  type Catalog,
+} from "@/ModelPicker";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,9 @@ function errorText(caught: unknown): string {
 /** The window behind the tray icon and the bare hotkey: settings and the menu's actions. */
 export function Home() {
   const [state, setState] = useState<HomeState | null>(null);
+  const [asked, setAsked] = useState<{ wsl: boolean; catalog: Catalog } | null>(null);
+  const wsl = state?.wsl;
+  const catalog = asked && asked.wsl === wsl ? asked.catalog : "loading";
 
   useEffect(() => {
     // pluck.toml may have been edited while the window was in the background.
@@ -34,6 +37,16 @@ export function Home() {
     window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
   }, []);
+
+  // Pi takes a few seconds to start, so ask it once the settings are known. WSL has its own Pi,
+  // with its own models.
+  useEffect(() => {
+    if (wsl === undefined) return;
+    bridge.agentCatalog().then(
+      (catalog) => setAsked({ wsl, catalog }),
+      (caught: unknown) => setAsked({ wsl, catalog: { error: errorText(caught) } }),
+    );
+  }, [wsl]);
 
   if (!state) return null;
 
@@ -66,9 +79,8 @@ export function Home() {
             />
             <GeneralSetting state={state} onChange={setState} />
             <AgentSetting
-              // WSL has its own Pi, with its own models.
-              key={String(state.wsl)}
               agent={state.agent}
+              catalog={catalog}
               wsl={state.wsl}
               onChange={(agent) => setState({ ...state, agent })}
             />
@@ -76,7 +88,11 @@ export function Home() {
           </div>
         </TabsContent>
         <TabsContent value="menu" className="min-h-0 overflow-auto">
-          <MenuTab state={state} onChange={(actions) => setState({ ...state, actions })} />
+          <MenuTab
+            state={state}
+            catalog={catalog}
+            onChange={(actions) => setState({ ...state, actions })}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -230,29 +246,20 @@ function GeneralSetting({
   );
 }
 
-const DEFAULT = "default";
-
 /** The harness, model and thinking level new agent sessions use, and the folder they run in. */
 function AgentSetting({
   agent,
+  catalog,
   wsl,
   onChange,
 }: {
   agent: AgentSettings;
+  catalog: Catalog;
   wsl: boolean;
   onChange: (agent: AgentSettings) => void;
 }) {
-  const [catalog, setCatalog] = useState<AgentCatalog | "loading" | null>("loading");
   const [problem, setProblem] = useState<string | null>(null);
   const [folder, setFolder] = useState(agent.folder);
-
-  // Pi takes a few seconds to start, so ask it once, as soon as the settings show.
-  useEffect(() => {
-    bridge.agentCatalog().then(setCatalog, (caught: unknown) => {
-      setCatalog(null);
-      setProblem(errorText(caught));
-    });
-  }, []);
 
   function save(next: AgentSettings) {
     setProblem(null);
@@ -260,34 +267,8 @@ function AgentSetting({
     bridge.setAgentSettings(next).catch((caught: unknown) => setProblem(errorText(caught)));
   }
 
-  const loaded = catalog && catalog !== "loading" ? catalog : null;
-  const choices = loaded ? modelChoices(loaded.models, loaded.settings) : [];
-  const start = loaded?.start;
-  const nameOf = (id: string) => choices.find((choice) => choice.id === id)?.name ?? id;
-  const startLevels = choices.find((choice) => choice.id === start?.model)?.thinkingLevels;
-  // "Pi default" leaves the model to Pi, and a model's marked level leaves the level to Pi.
-  const models: AgentModelChoice[] = [
-    {
-      id: DEFAULT,
-      label: start ? `Pi default: ${nameOf(start.model)}` : "Pi default",
-      thinkingLevels: startLevels ?? (start ? [start.thinking] : []),
-      thinking: start?.thinking ?? "",
-    },
-    ...choices.map((choice) => ({
-      ...choice,
-      label: `${choice.name} · ${choice.id.split("/")[0]}`,
-    })),
-  ];
-  if (agent.model && !choices.some((choice) => choice.id === agent.model))
-    models.push({
-      id: agent.model,
-      label: agent.model,
-      thinkingLevels: agent.thinking ? [agent.thinking] : [],
-      thinking: "",
-    });
-  const model = models.find((choice) => choice.id === (agent.model ?? DEFAULT));
-  const sessionModel = agent.model ?? start?.model;
-  const sessionThinking = agent.thinking ?? model?.thinking;
+  const loaded = loadedCatalog(catalog);
+  const session = loaded && effectiveModel(loaded, agent, piStart(loaded));
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-4">
@@ -308,18 +289,12 @@ function AgentSetting({
           onChange={() => {}}
         />
         <div className="col-span-4">
-          <AgentModelFields
-            models={models}
-            model={agent.model ?? DEFAULT}
-            thinking={sessionThinking ?? ""}
-            onChange={(id, thinking) => {
-              const next = models.find((choice) => choice.id === id);
-              save({
-                ...agent,
-                model: id === DEFAULT ? null : id,
-                thinking: thinking === next?.thinking ? null : thinking,
-              });
-            }}
+          <ModelPicker
+            catalog={catalog}
+            value={agent}
+            fallback={loaded ? piStart(loaded) : {}}
+            fallbackLabel="Pi default"
+            onChange={(model) => save({ ...agent, ...model })}
           />
         </div>
       </div>
@@ -352,10 +327,15 @@ function AgentSetting({
         </FieldDescription>
       </Field>
       {catalog === "loading" && <p className="text-muted-foreground">Asking Pi for its models…</p>}
-      {loaded && sessionModel && (
+      {loaded && session?.model && (
         <p className="text-muted-foreground">
-          New sessions use {nameOf(sessionModel)}
-          {sessionThinking && ` with ${sessionThinking} thinking`}.
+          New sessions use {modelName(loaded, session.model)}
+          {session.thinking && ` with ${session.thinking} thinking`}.
+        </p>
+      )}
+      {typeof catalog === "object" && "error" in catalog && (
+        <p role="status" className="text-destructive">
+          {catalog.error}
         </p>
       )}
       {problem && (

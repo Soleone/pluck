@@ -116,6 +116,49 @@ pub fn send(agents: &Agents, id: &str, record: &str) -> Result<(), String> {
   writeln!(stdin, "{record}").and_then(|()| stdin.flush()).map_err(|error| error.to_string())
 }
 
+/// Sends `prompt` to a short-lived session that isn't saved and passes on its reply's text as it
+/// streams in. Returns once Pi has finished, with Pi's error when the run failed.
+pub fn reply(folder: &str, wsl: bool, args: &[String], prompt: &str, mut on_text: impl FnMut(String)) -> Result<(), String> {
+  let mut child = spawn(folder, wsl, &[&["--no-session".to_string()], args].concat()).map_err(|error| error.to_string())?;
+  let mut stdin = child.stdin.take();
+  let ask = stdin.as_mut().expect("stdin is piped");
+  writeln!(ask, "{}", serde_json::json!({ "type": "prompt", "message": prompt })).map_err(|error| error.to_string())?;
+  let (mut settled, mut failure) = (false, None);
+  let reason = read_records(&mut child, |record| match record["type"].as_str() {
+    Some("message_update") => {
+      let event = &record["assistantMessageEvent"];
+      if event["type"] == "text_delta" {
+        on_text(event["delta"].as_str().unwrap_or("").to_string());
+      }
+    }
+    // Pi's errors, like "Connection error.", don't say which model failed.
+    Some("message_end") if record["message"]["stopReason"] == "error" => {
+      let message = &record["message"];
+      let text = message["errorMessage"].as_str().unwrap_or("Pi failed");
+      failure = Some(format!("{text} ({}/{})", message["provider"].as_str().unwrap_or(""), message["model"].as_str().unwrap_or("")));
+    }
+    Some("response") if record["success"] == false => failure = record["error"].as_str().map(String::from),
+    Some("agent_settled") => {
+      settled = true;
+      // Closing stdin asks Pi to shut down.
+      stdin = None;
+    }
+    _ => {}
+  });
+  match failure {
+    Some(failure) => Err(failure),
+    None if settled => Ok(()),
+    None => Err(reason),
+  }
+}
+
+/// Pi's arguments for a model and thinking level; unset ones are left to Pi.
+pub fn pi_args(model: Option<&str>, thinking: Option<&str>) -> Vec<String> {
+  let model = model.into_iter().flat_map(|model| ["--model", model]);
+  let thinking = thinking.into_iter().flat_map(|level| ["--thinking", level]);
+  model.chain(thinking).map(String::from).collect()
+}
+
 /// The models Pi can use, Pi's settings, which hold the user's model scope and per-model thinking
 /// levels, and the model and thinking level a new session starts with, asked from a short-lived process.
 pub fn models(folder: &str, wsl: bool) -> Result<Value, String> {

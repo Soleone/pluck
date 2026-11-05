@@ -61,11 +61,14 @@ struct HomeState {
 }
 
 /// Asks the agents window to send `prompt` from the menu, to `session` or else a new session.
+/// A new session runs with `model` and `thinking`, where set.
 #[derive(Clone, Serialize)]
 struct AgentRequest {
   title: String,
   prompt: String,
   session: Option<String>,
+  model: Option<String>,
+  thinking: Option<String>,
 }
 
 #[derive(Default)]
@@ -217,7 +220,16 @@ fn run_action(
     let opened = &session.opened;
     let action = opened.actions.iter().find(|action| action.id == id).cloned().ok_or("Unknown action")?;
     if let Some(prompt) = &action.agent {
-      let request = agent_request(title_of(&opened.text), agent_prompt(prompt, opened), opened, continue_session);
+      let prompt = agent_prompt(prompt, opened);
+      if !action.interactive {
+        thread::spawn(move || show(&app, run, |on_line| one_off(&app, &action, &prompt, on_line)));
+        return Ok(());
+      }
+      let request = AgentRequest {
+        model: action.model.clone(),
+        thinking: action.thinking.clone(),
+        ..agent_request(title_of(&opened.text), prompt, opened, continue_session)
+      };
       drop(session);
       send_to_agents(&app, request);
       return Ok(());
@@ -233,7 +245,7 @@ fn run_action(
   };
   match action.output {
     Output::Show | Output::Replace => {
-      thread::spawn(move || show(&app, child, run));
+      thread::spawn(move || show(&app, run, |on_line| action::stream(child, on_line)));
     }
     Output::Copy | Output::Notify => {
       hide_menu(&app);
@@ -275,7 +287,24 @@ fn replace(app: AppHandle, text: String) {
 
 fn agent_request(title: String, prompt: String, opened: &Opened, continue_session: bool) -> AgentRequest {
   let session = opened.last_session.as_ref().filter(|_| continue_session).map(|session| session.id.clone());
-  AgentRequest { title, prompt, session }
+  AgentRequest { title, prompt, session, model: None, thinking: None }
+}
+
+/// Runs a prompt action that isn't interactive: one reply from the agent, without a session.
+fn one_off(app: &AppHandle, action: &Action, prompt: &str, on_text: impl FnMut(String)) -> Result<(), String> {
+  let settings = config::settings(&config_dir(app));
+  let (model, thinking) = session_model(action.model.clone(), action.thinking.clone(), &settings.agent);
+  let args = agent::pi_args(model.as_deref(), thinking.as_deref());
+  agent::reply(&settings.agent.folder, settings.wsl, &args, prompt, on_text)
+}
+
+/// The model and thinking level a new session runs with: the ones given, else the agent settings'.
+/// A model given without a level leaves the level to Pi, since it may not support the settings' one.
+fn session_model(model: Option<String>, thinking: Option<String>, agent: &AgentSettings) -> (Option<String>, Option<String>) {
+  match model {
+    Some(model) => (Some(model), thinking),
+    None => (agent.model.clone(), thinking.or_else(|| agent.thinking.clone())),
+  }
 }
 
 fn send_to_agents(app: &AppHandle, request: AgentRequest) {
@@ -406,9 +435,17 @@ fn agent_sessions(app: AppHandle) -> Vec<AgentSession> {
   agent::sessions(&config_dir(&app))
 }
 
-/// Runs session `id`, adding it to the list with the current agent settings when it is new.
+/// Runs session `id`, adding it to the list when it is new, with `model` and `thinking` where set,
+/// else the agent settings'.
 #[tauri::command]
-fn agent_start(app: AppHandle, agents: State<Agents>, id: String, title: String) -> Result<(), String> {
+fn agent_start(
+  app: AppHandle,
+  agents: State<Agents>,
+  id: String,
+  title: String,
+  model: Option<String>,
+  thinking: Option<String>,
+) -> Result<(), String> {
   let dir = config_dir(&app);
   let mut args = Vec::new();
   let session = match agent::sessions(&dir).into_iter().find(|session| session.id == id) {
@@ -419,8 +456,8 @@ fn agent_start(app: AppHandle, agents: State<Agents>, id: String, title: String)
       if agent.harness != "pi" {
         return Err(format!("Pluck can't run {} yet", agent.harness));
       }
-      args.extend(agent.model.into_iter().flat_map(|model| ["--model".to_string(), model]));
-      args.extend(agent.thinking.into_iter().flat_map(|level| ["--thinking".to_string(), level]));
+      let (model, thinking) = session_model(model, thinking, &agent);
+      args = agent::pi_args(model.as_deref(), thinking.as_deref());
       let session = AgentSession { id, title, folder: agent.folder, wsl: settings.wsl, last_active: agent::now() };
       let added = session.clone();
       agent::update_sessions(&dir, |sessions| sessions.insert(0, added))
@@ -470,11 +507,12 @@ fn title_of(text: &str) -> String {
   }
 }
 
-fn show(app: &AppHandle, child: Child, run: u32) {
+/// Streams what `produce` passes on into the menu's panel.
+fn show(app: &AppHandle, run: u32, produce: impl FnOnce(&mut dyn FnMut(String)) -> Result<(), String>) {
   let emit = |event: RunEvent| {
     let _ = app.emit("pluck://run", event);
   };
-  let result = action::stream(child, |line| emit(RunEvent { run, line: Some(line), done: false, error: None }));
+  let result = produce(&mut |line| emit(RunEvent { run, line: Some(line), done: false, error: None }));
   emit(RunEvent { run, line: None, done: true, error: result.err() });
 }
 

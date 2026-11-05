@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
-import { bridge, type Action, type HomeState } from "@/bridge";
+import { bridge, type Action, type AgentSettings, type HomeState } from "@/bridge";
 import { ActionIcon } from "@/ActionIcon";
 import { ChoiceField } from "@/ChoiceField";
 import { newId, suggestKey } from "@/menuActions";
+import { ModelPicker, effectiveModel, loaded, piStart, type Catalog } from "@/ModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +32,11 @@ const OUTPUTS = [
 /** The menu's actions, editable here and saved to pluck.toml. */
 export function MenuTab({
   state,
+  catalog,
   onChange,
 }: {
   state: HomeState;
+  catalog: Catalog;
   onChange: (actions: Action[]) => void;
 }) {
   /** The action in the dialog: an existing one, a new one, or none while closed. */
@@ -127,6 +131,8 @@ export function MenuTab({
         <ActionDialog
           action={editing === "new" ? null : editing}
           actions={actions}
+          agent={state.agent}
+          catalog={catalog}
           onClose={() => setEditing(null)}
           onSave={(saved) =>
             save(
@@ -150,12 +156,16 @@ export function MenuTab({
 function ActionDialog({
   action,
   actions,
+  agent,
+  catalog,
   onClose,
   onSave,
   onDelete,
 }: {
   action: Action | null;
   actions: Action[];
+  agent: AgentSettings;
+  catalog: Catalog;
   onClose: () => void;
   onSave: (action: Action) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -168,6 +178,11 @@ function ActionDialog({
   const [prompt, setPrompt] = useState(action?.agent ?? "");
   const [run, setRun] = useState(action?.run ?? "");
   const [output, setOutput] = useState<Action["output"]>(action?.output ?? "show");
+  const [interactive, setInteractive] = useState(action?.interactive ?? true);
+  const [model, setModel] = useState({
+    model: action?.model ?? null,
+    thinking: action?.thinking ?? null,
+  });
   const [checked, setChecked] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -176,6 +191,8 @@ function ActionDialog({
     ? others.find((other) => other.key?.toLowerCase() === shownKey.toLowerCase())
     : undefined;
   const body = kind === "prompt" ? prompt : run;
+  const known = loaded(catalog);
+  const settingsModel = known ? effectiveModel(known, agent, piStart(known)) : {};
   const valid = name.trim() !== "" && body.trim() !== "" && !keyOwner;
 
   function submit(event: FormEvent) {
@@ -190,6 +207,8 @@ function ActionDialog({
       run: kind === "script" ? run.trim() : "",
       agent: kind === "prompt" ? prompt.trim() : null,
       output: kind === "script" ? output : "notify",
+      interactive: kind === "script" || interactive,
+      ...(kind === "prompt" ? model : { model: null, thinking: null }),
     }).then(onClose, (caught: unknown) => setProblem(String(caught)));
   }
 
@@ -200,7 +219,7 @@ function ActionDialog({
           <DialogHeader>
             <DialogTitle>{action ? `Edit ${action.name}` : "New action"}</DialogTitle>
             <DialogDescription>
-              A prompt opens an agent session on the text. A script runs your own command.
+              A prompt sends the text to the agent. A script runs your own command.
             </DialogDescription>
           </DialogHeader>
           <Tabs value={kind} onValueChange={setKind}>
@@ -236,19 +255,43 @@ function ActionDialog({
             </FieldError>
           )}
           {kind === "prompt" ? (
-            <Field data-invalid={checked && !prompt.trim()}>
-              <FieldLabel htmlFor="action-prompt">Prompt</FieldLabel>
-              <Textarea
-                id="action-prompt"
-                rows={5}
-                placeholder="Give me all the context I need to understand this concept. Use visuals where they help."
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
+            <>
+              <Field data-invalid={checked && !prompt.trim()}>
+                <FieldLabel htmlFor="action-prompt">Prompt</FieldLabel>
+                <Textarea
+                  id="action-prompt"
+                  rows={5}
+                  placeholder="Give me all the context I need to understand this concept. Use visuals where they help."
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                />
+                <FieldDescription>
+                  The agent gets it with the selected text and where it came from.
+                </FieldDescription>
+              </Field>
+              <ModelPicker
+                catalog={catalog}
+                value={model}
+                fallback={settingsModel}
+                fallbackLabel="Settings"
+                onChange={setModel}
               />
-              <FieldDescription>
-                The agent gets it with the selected text and where it came from.
-              </FieldDescription>
-            </Field>
+              <Field orientation="horizontal">
+                <Checkbox
+                  id="action-interactive"
+                  checked={interactive}
+                  onCheckedChange={setInteractive}
+                />
+                <div className="flex flex-col gap-0.5">
+                  <FieldLabel htmlFor="action-interactive">Interactive agent session</FieldLabel>
+                  <FieldDescription>
+                    {interactive
+                      ? "Opens a session you can keep talking to."
+                      : "Shows a one-off reply in the menu."}
+                  </FieldDescription>
+                </div>
+              </Field>
+            </>
           ) : (
             <>
               <Field data-invalid={checked && !run.trim()}>

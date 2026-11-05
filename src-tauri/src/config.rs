@@ -35,7 +35,8 @@ pub enum Output {
   Replace,
 }
 
-/// Runs `run` as a script, or with `agent` set, starts an agent session on that prompt instead.
+/// Runs `run` as a script, or with `agent` set, sends that prompt to the agent instead: in a
+/// session, or when not `interactive`, as a one-off reply shown in the menu.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Action {
   pub id: String,
@@ -46,10 +47,19 @@ pub struct Action {
   pub agent: Option<String>,
   #[serde(default = "notify")]
   pub output: Output,
+  #[serde(default = "interactive")]
+  pub interactive: bool,
+  /// Unset model and thinking use the agent settings.
+  pub model: Option<String>,
+  pub thinking: Option<String>,
 }
 
 fn notify() -> Output {
   Output::Notify
+}
+
+fn interactive() -> bool {
+  true
 }
 
 #[derive(Default)]
@@ -129,6 +139,13 @@ pub fn save_actions(dir: &Path, actions: &[Action]) -> Result<(), String> {
       Output::Notify => None,
     };
     set(&mut table, "output", output.filter(|_| script));
+    if script || action.interactive {
+      table.remove("interactive");
+    } else {
+      table.insert("interactive", value(false));
+    }
+    set(&mut table, "model", action.model.as_deref().filter(|_| !script));
+    set(&mut table, "thinking", action.thinking.as_deref().filter(|_| !script));
     tables.push(table);
   }
   if let (Some(header), Some(first)) = (header, tables.get_mut(0)) {
@@ -210,7 +227,7 @@ mod tests {
   use super::*;
 
   fn prompt(id: &str, text: &str) -> Action {
-    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Notify }
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Notify, interactive: true, model: None, thinking: None }
   }
 
   fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
@@ -246,6 +263,22 @@ mod tests {
         ("a".into(), Some("x".into()), None)
       ]
     );
+  }
+
+  #[test]
+  // menu-tab.agent
+  fn menu_tab_agent_keeps_model_thinking_and_one_off() {
+    let dir = dir_with("agent", "");
+    let mut quick = prompt("q", "Define this.");
+    quick.interactive = false;
+    quick.model = Some("anthropic/claude-haiku-5-5".into());
+    quick.thinking = Some("off".into());
+    save_actions(&dir, &[quick, prompt("e", "Explain this.")]).unwrap();
+
+    let text = fs::read_to_string(dir.join("pluck.toml")).unwrap();
+    assert_eq!(text.matches("interactive").count(), 1, "{text}");
+    let saved: Vec<_> = load(&dir).actions.into_iter().map(|action| (action.interactive, action.model, action.thinking)).collect();
+    assert_eq!(saved, [(false, Some("anthropic/claude-haiku-5-5".into()), Some("off".into())), (true, None, None)]);
   }
 
   #[test]

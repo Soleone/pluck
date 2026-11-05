@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, PanelLeft, Plus, X } from "lucide-react";
 import { AgentDialog, type DialogAnswer } from "@/AgentDialog";
 import { ago } from "@/agent/ago";
-import { bridge, type AgentSession } from "@/bridge";
+import { bridge, type AgentSession, type SessionModel } from "@/bridge";
 import {
   agentMessages,
   applyRecord,
@@ -69,8 +69,10 @@ export function Agents() {
   useEffect(
     () =>
       bridge.onAgentRequest(
-        ({ title, prompt, session }) =>
-          void (session ? continueWith(session, prompt) : start(title, prompt)).catch(fail),
+        ({ title, prompt, session, model, thinking }) =>
+          void (
+            session ? continueWith(session, prompt) : start(title, prompt, { model, thinking })
+          ).catch(fail),
       ),
     [],
   );
@@ -80,16 +82,16 @@ export function Agents() {
   }
 
   /** Runs a session's process; pluck may have restarted since the session was last open. */
-  async function run(id: string, title: string) {
+  async function run(id: string, title: string, model?: SessionModel) {
     if (running.current.has(id)) return;
-    await bridge.agentStart(id, title);
+    await bridge.agentStart(id, title, model);
     running.current.add(id);
     await bridge.agentSend(id, { type: "get_state" });
   }
 
-  async function start(title: string, text: string) {
+  async function start(title: string, text: string, model?: SessionModel) {
     const id = crypto.randomUUID();
-    await run(id, title);
+    await run(id, title, model);
     setSessions(await bridge.agentSessions());
     setSelected(id);
     setError(undefined);

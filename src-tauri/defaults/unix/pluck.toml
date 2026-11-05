@@ -10,6 +10,9 @@
 #           "notify" (the default) runs in the background and shows its first line.
 #   agent   instead of run: a prompt. The text is sent with it to an agent session, using the
 #           agent set in Settings.
+#   interactive  false shows the agent's reply in the menu instead of opening a session.
+#   model, thinking  for agent actions, the model ("provider/id") and thinking level to use
+#           instead of the ones in Settings.
 
 [[action]]
 id = "explain"

@@ -9,6 +9,9 @@ const action = (id: string, key: string | null): Action => ({
   run: "",
   agent: "Explain this.",
   output: "notify",
+  interactive: true,
+  model: null,
+  thinking: null,
 });
 
 test("menu-tab.key: a new action's key is the first free letter of its name", () => {

@@ -9,19 +9,22 @@ export type Action = {
   name: string;
   key: string | null;
   run: string;
-  /** Set on actions that start an agent session on this prompt instead of running a script. */
+  /** Set on actions that send this prompt to the agent instead of running a script. */
   agent: string | null;
   output: "show" | "copy" | "notify" | "replace";
-};
+  /** Agent actions only: false shows the agent's reply in the menu instead of opening a session. */
+  interactive: boolean;
+} & SessionModel;
+
+/** For a new session; unset ones fall back to the agent settings. */
+export type SessionModel = { model: string | null; thinking: string | null };
 
 /** Unset model and thinking use the harness's own defaults. */
 export type AgentSettings = {
   harness: "pi";
-  model: string | null;
-  thinking: string | null;
   /** Where new sessions run, inside WSL when the settings say so. */
   folder: string;
-};
+} & SessionModel;
 
 export type AgentSession = {
   id: string;
@@ -36,7 +39,7 @@ export type AgentSession = {
 type AgentEvent = { id: string; record: PiRecord | null; exited: string | null };
 
 /** The menu asking the agents window to send a prompt, to `session` or else a new session. */
-type AgentRequest = { title: string; prompt: string; session: string | null };
+type AgentRequest = { title: string; prompt: string; session: string | null } & SessionModel;
 
 /** `start` is the model, as `provider/id`, and thinking level Pi starts a new session with. */
 export type AgentCatalog = {
@@ -110,8 +113,8 @@ type Bridge = {
   /** Takes a few seconds: it starts the harness to ask. */
   agentCatalog(): Promise<AgentCatalog>;
   agentSessions(): Promise<AgentSession[]>;
-  /** Runs session `id`, adding it to the list when it is new. `title` is only used then. */
-  agentStart(id: string, title: string): Promise<void>;
+  /** Runs session `id`, adding it to the list when it is new. `title` and `model` are only used then. */
+  agentStart(id: string, title: string, model?: SessionModel): Promise<void>;
   agentSend(id: string, record: object): Promise<void>;
   /** Stops the session and takes it off the list; the harness keeps its own copy. */
   agentRemove(id: string): Promise<void>;
@@ -159,7 +162,7 @@ const native: Bridge = {
   setAgentSettings: (agent) => invoke("set_agent_settings", { agent }),
   agentCatalog: () => invoke("agent_models"),
   agentSessions: () => invoke("agent_sessions"),
-  agentStart: (id, title) => invoke("agent_start", { id, title }),
+  agentStart: (id, title, model) => invoke("agent_start", { id, title, ...model }),
   agentSend: (id, record) => invoke("agent_send", { id, record: JSON.stringify(record) }),
   agentRemove: (id) => invoke("agent_remove", { id }),
   onAgent: (listener) => subscribe("pluck://agent", listener),
@@ -167,8 +170,32 @@ const native: Bridge = {
   showAgents: () => invoke("show_agents"),
 };
 
-const ps = (script: string) =>
-  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/${script}.ps1`;
+const sessionDefaults = { interactive: true, model: null, thinking: null };
+
+const scriptAction = (
+  id: string,
+  name: string,
+  key: string,
+  output: Action["output"] = "notify",
+) => ({
+  id,
+  name,
+  key,
+  run: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/${id}.ps1`,
+  agent: null,
+  output,
+  ...sessionDefaults,
+});
+
+const promptAction = (id: string, name: string, key: string, agent: string): Action => ({
+  id,
+  name,
+  key,
+  run: "",
+  agent,
+  output: "notify",
+  ...sessionDefaults,
+});
 
 const sample: Opened = {
   text: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
@@ -177,40 +204,17 @@ const sample: Opened = {
   title: "Ludwig Wittgenstein - Wikipedia",
   url: "https://en.wikipedia.org/wiki/Ludwig_Wittgenstein",
   actions: [
+    promptAction("explain", "Explain", "e", "Explain this briefly."),
     {
-      id: "explain",
-      name: "Explain",
-      key: "e",
-      run: "",
-      agent: "Explain this briefly.",
-      output: "notify",
+      ...promptAction("define", "Define", "d", "Define this in one sentence."),
+      interactive: false,
+      thinking: "off",
     },
-    {
-      id: "translate",
-      name: "Translate to English",
-      key: "t",
-      run: ps("translate"),
-      agent: null,
-      output: "notify",
-    },
-    {
-      id: "search",
-      name: "Search the web",
-      key: "s",
-      run: ps("search"),
-      agent: null,
-      output: "notify",
-    },
-    {
-      id: "bookmark",
-      name: "Save as bookmark",
-      key: "b",
-      run: ps("bookmark"),
-      agent: null,
-      output: "notify",
-    },
-    { id: "count", name: "Count words", key: "w", run: ps("count"), agent: null, output: "show" },
-    { id: "upper", name: "Uppercase", key: "u", run: ps("upper"), agent: null, output: "replace" },
+    scriptAction("translate", "Translate to English", "t"),
+    scriptAction("search", "Search the web", "s"),
+    scriptAction("bookmark", "Save as bookmark", "b"),
+    scriptAction("count", "Count words", "w", "show"),
+    scriptAction("upper", "Uppercase", "u", "replace"),
   ],
   problems: [],
   lastSession: null,
@@ -318,7 +322,8 @@ function prototype(): Bridge {
       return () => (runListener = undefined);
     },
     async run(actionId, run) {
-      const output = sample.actions.find((action) => action.id === actionId)?.output;
+      const action = sample.actions.find((candidate) => candidate.id === actionId);
+      const output = action?.agent && !action.interactive ? "show" : action?.output;
       if (output === "replace")
         return void setTimeout(
           () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
