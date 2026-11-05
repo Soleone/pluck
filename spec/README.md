@@ -176,10 +176,10 @@ agent = "Explain this briefly."
 
 ## Web prototype
 
-| Rule            | When                                                           | Then                                                                                                                                        |
-| --------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `web.prototype` | Pluck runs in a plain browser (`pnpm dev:web`, or hosted demo) | The menu, home and agents render with sample data, switchable from the header, which says replies are canned and links the Windows download |
-| `web.canned`    | An action runs or a question is asked in the browser           | Scripts and one-off agent replies return canned output; agent actions and questions switch to Agents, where a canned session answers        |
+| Rule            | When                                                           | Then                                                                                                                                                                |
+| --------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web.prototype` | Pluck runs in a plain browser (`pnpm dev:web`, or hosted demo) | The menu, home and agents render with sample data, switchable from the header, which says replies are canned; a button in the bottom right corner downloads the app |
+| `web.canned`    | An action runs or a question is asked in the browser           | Scripts and one-off agent replies return canned output; agent actions and questions switch to Agents, where a canned session answers                                |
 
 > Why: UI iteration in a browser is much faster than rebuilding the native app on Windows, and the same build lets anyone try pluck without installing it.
 

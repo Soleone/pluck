@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Agents } from "@/Agents";
@@ -58,14 +59,6 @@ function Prototype() {
           </TabsList>
         </Tabs>
         <div className="flex items-center gap-2 justify-self-end">
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<a href={RELEASES_URL} />}
-          >
-            Download for Windows
-          </Button>
           <ThemePicker />
         </div>
       </header>
@@ -84,6 +77,16 @@ function Prototype() {
           </div>
         )}
       </main>
+      <div className="fixed right-4 bottom-4 z-40 md:right-8 md:bottom-8">
+        <Button
+          size="lg"
+          nativeButton={false}
+          render={<a href={RELEASES_URL} target="_blank" rel="noreferrer" />}
+        >
+          <Download aria-hidden="true" />
+          Download the app
+        </Button>
+      </div>
     </div>
   );
 }
