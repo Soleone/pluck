@@ -12,6 +12,7 @@ import {
 } from "@/ModelPicker";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
 import { Bot } from "lucide-react";
+import { ThemePicker } from "@/components/soleone/theme-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -68,6 +69,7 @@ export function Home() {
               <Bot />
               Agents
             </Button>
+            <ThemePicker />
           </span>
         </header>
         <TabsContent value="settings" className="min-h-0 overflow-auto">
