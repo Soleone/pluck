@@ -19,7 +19,7 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
 
 ## Demo and portfolio
 
-The browser build (`pnpm dev:web`) doubles as the public demo at https://pluck.soleone.xyz, the Vercel project `pluck-demo`, which is not connected to git. Redeploy after UI changes: `pnpm build && cd dist && vercel link --yes --project pluck-demo && vercel deploy --prod --yes` (the build wipes `dist/.vercel`). `showcase.json` holds what the portfolio shows; re-record the README loop with `pnpm media:capture --url <preview url>` once what it shows changes.
+The browser build (`pnpm dev:web`) doubles as the public demo at https://pluck.soleone.xyz, the Vercel project `pluck-demo`, which is not connected to git. Redeploy after UI changes with `pnpm release:demo`, which builds, re-links `dist` (the build wipes `dist/.vercel`) and deploys to production. `showcase.json` holds what the portfolio shows; re-record the README loop with `pnpm media:capture --url <preview url>` once what it shows changes.
 
 ## Where things are
 

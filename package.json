@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "build:tauri": "tauri build",
     "release": "release-it",
+    "release:demo": "pnpm build && cd dist && vercel link --yes --project pluck-demo && vercel deploy --prod --yes",
     "media:capture": "node scripts/capture-demo.mjs"
   },
   "dependencies": {
