@@ -101,26 +101,26 @@ output = "show"
 
 Each action's `output` says what happens with the script's stdout, or the agent's reply for an `agent` action.
 
-| Rule             | When                                      | Then                                                                                                                                                                            |
-| ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `output.show`    | `output = "show"`                         | A small panel opens at the menu's position and streams stdout as it arrives, its title shimmering until a check marks it done; `Esc` or a click on its hint closes it           |
-| `output.copy`    | `output = "copy"`                         | The menu says the action started and closes; when it's done, the output is put on the clipboard and its overlay card says so                                                    |
-| `output.notify`  | `output = "notify"`                       | The menu says the action started, closes, and it runs in the background; the script's first line of stdout, or the agent's whole reply (or "Done"), appears on its overlay card |
-| `output.replace` | `output = "replace"`                      | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels. Both hints are clickable      |
-| `output.session` | `output = "session"` on an `agent` action | It opens an agent session (`action.agent`); on a script it's a config problem                                                                                                   |
-| `output.default` | No `output` is given                      | It is `notify` for a script and `session` for an `agent` action; an `agent` action's `interactive = false` means `show`                                                         |
+| Rule             | When                                      | Then                                                                                                                                                                           |
+| ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `output.show`    | `output = "show"`                         | A small panel opens at the menu's position and streams stdout as it arrives, its title shimmering until a check marks it done; `Esc` or a click on its hint closes it          |
+| `output.copy`    | `output = "copy"`                         | The menu says the action started and closes; when it's done, the output is put on the clipboard and its overlay card says so                                                   |
+| `output.notify`  | `output = "notify"`                       | The menu says the action started, closes, and it runs in the background; the script's last line of stdout, or the agent's whole reply (or "Done"), appears on its overlay card |
+| `output.replace` | `output = "replace"`                      | A panel streams stdout as a preview; `Enter` puts it in place of the selection, or on the clipboard when the text came from there; `Esc` cancels. Both hints are clickable     |
+| `output.session` | `output = "session"` on an `agent` action | It opens an agent session (`action.agent`); on a script it's a config problem                                                                                                  |
+| `output.default` | No `output` is given                      | It is `notify` for a script and `session` for an `agent` action; an `agent` action's `interactive = false` means `show`                                                        |
 
 ## Overlay
 
 Cards at the bottom of the screen, in place of the system's notifications.
 
-| Rule               | When                                                     | Then                                                                                                                                                       |
-| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `overlay.running`  | A `copy` or `notify` action runs                         | A card at the bottom center of the screen the menu was on shows its name with a spinner and, for `notify`, the latest line of output; it never takes focus |
-| `overlay.stop`     | Stop is clicked on a running script's card               | The script and every process it started end, and the card goes away                                                                                        |
-| `overlay.result`   | A background action finishes                             | Its card shows a check and the result, or the error; it goes away after a few seconds, longer for an error, unless the pointer is on it, or when dismissed |
-| `overlay.problems` | Pluck can't register its hotkey or replace the selection | It says so on a card; pluck shows no system notifications                                                                                                  |
-| `overlay.stack`    | Several cards are shown                                  | They stack, newest at the bottom, and the window covers only them, so the screen around stays clickable                                                    |
+| Rule               | When                                                     | Then                                                                                                                                                                                                                             |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overlay.running`  | A `copy` or `notify` action runs                         | Once it has run for a moment, a card at the bottom center of the screen the menu was on shows its name with a spinner and, for `notify`, the latest line of output; it never takes focus. A quicker action shows only its result |
+| `overlay.stop`     | Stop is clicked on a running script's card               | The script and every process it started end, and the card goes away                                                                                                                                                              |
+| `overlay.result`   | A background action finishes                             | Its card shows a check and the result, or the error; it goes away after a few seconds, longer for an error, unless the pointer is on it, or when dismissed                                                                       |
+| `overlay.problems` | Pluck can't register its hotkey or replace the selection | It says so on a card; pluck shows no system notifications                                                                                                                                                                        |
+| `overlay.stack`    | Several cards are shown                                  | They stack, newest at the bottom, and the window covers only them, so the screen around stays clickable                                                                                                                          |
 
 ## Home
 

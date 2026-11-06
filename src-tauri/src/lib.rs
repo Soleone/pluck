@@ -585,7 +585,7 @@ fn finish_in_background(app: &AppHandle, action: &Action, pid: Option<u32>, prod
     if action.output == Output::Copy {
       return grab::set_clipboard(output.trim_end_matches(['\r', '\n'])).map(|()| "Copied".into());
     }
-    let body = if action.agent.is_some() { output.trim() } else { output.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("") };
+    let body = if action.agent.is_some() { output.trim() } else { output.lines().map(str::trim).rfind(|line| !line.is_empty()).unwrap_or("") };
     Ok(if body.is_empty() { "Done" } else { body }.into())
   });
   overlay::finish(app, card, result);

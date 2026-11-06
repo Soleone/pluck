@@ -3,12 +3,14 @@
 
 use crate::action;
 use serde::Serialize;
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex, thread, time::Duration};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewWindow};
 
 const WIDTH: f64 = 380.0;
 /// Space between the cards and the bottom of the work area, in logical pixels.
 const MARGIN: f64 = 16.0;
+/// A run that finishes sooner shows only its result, with no spinner before it.
+const SPINNER_DELAY: Duration = Duration::from_millis(600);
 
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -30,10 +32,13 @@ pub struct Card {
   stoppable: bool,
 }
 
-/// `pid` is the script's process, for stopping it.
+/// `pid` is the script's process, for stopping it. `text` is the latest progress, kept until the
+/// card shows.
 struct Run {
   title: String,
   pid: Option<u32>,
+  text: String,
+  shown: bool,
 }
 
 #[derive(Default)]
@@ -48,27 +53,37 @@ struct Cards {
 #[derive(Default)]
 pub struct Overlay(Mutex<Cards>);
 
-/// Shows a running card for `title` and returns its id for `progress` and `finish`.
+/// Starts a run for `title`, shown as a running card once it outlasts `SPINNER_DELAY`, and returns
+/// its id for `progress` and `finish`.
 pub fn start(app: &AppHandle, title: &str, pid: Option<u32>) -> u32 {
   let overlay = app.state::<Overlay>();
-  let id = {
-    let mut cards = overlay.0.lock().unwrap();
-    cards.next_id += 1;
-    let id = cards.next_id;
-    cards.running.insert(id, Run { title: title.into(), pid });
-    id
-  };
-  progress(app, id, "");
+  let mut cards = overlay.0.lock().unwrap();
+  cards.next_id += 1;
+  let id = cards.next_id;
+  cards.running.insert(id, Run { title: title.into(), pid, text: String::new(), shown: false });
+  let app = app.clone();
+  thread::spawn(move || {
+    thread::sleep(SPINNER_DELAY);
+    show_running(&app, id, |run| run.shown = true);
+  });
   id
 }
 
 /// Shows `text` on a running card, unless it was stopped.
 pub fn progress(app: &AppHandle, id: u32, text: &str) {
+  show_running(app, id, |run| run.text = text.into());
+}
+
+fn show_running(app: &AppHandle, id: u32, change: impl FnOnce(&mut Run)) {
   let overlay = app.state::<Overlay>();
   let card = {
-    let cards = overlay.0.lock().unwrap();
-    let Some(run) = cards.running.get(&id) else { return };
-    Card { id, title: run.title.clone(), text: text.into(), status: Status::Running, stoppable: run.pid.is_some() }
+    let mut cards = overlay.0.lock().unwrap();
+    let Some(run) = cards.running.get_mut(&id) else { return };
+    change(run);
+    if !run.shown {
+      return;
+    }
+    Card { id, title: run.title.clone(), text: run.text.clone(), status: Status::Running, stoppable: run.pid.is_some() }
   };
   emit(app, card);
 }
