@@ -114,12 +114,10 @@ function StatusIcon({ status }: { status: Card["status"] }) {
     return (
       <LoaderCircle
         aria-hidden
-        className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
+        className="mt-1 size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
       />
     );
   if (status === "failed")
-    return <CircleX aria-label="Failed" className="mt-0.5 size-4 shrink-0 text-destructive" />;
-  return (
-    <CircleCheck aria-label="Done" className="menu-done mt-0.5 size-4 shrink-0 text-primary" />
-  );
+    return <CircleX aria-label="Failed" className="mt-1 size-4 shrink-0 text-destructive" />;
+  return <CircleCheck aria-label="Done" className="menu-done mt-1 size-4 shrink-0 text-primary" />;
 }
