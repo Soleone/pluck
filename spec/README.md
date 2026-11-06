@@ -27,7 +27,7 @@ Split into files by area (`spec/menu.md`, `spec/action.md`) once this one gets l
 | `trigger.hotkey-default` | No hotkey has been chosen                        | The hotkey is `Ctrl+Alt+Space` (`Cmd+Option+Space` on macOS)                      |
 | `trigger.tray`           | Pluck is running on Windows or macOS             | It has a tray icon; a click opens home, its menu has Open Pluck, Agents and Quit  |
 | `trigger.start`          | Pluck is started, or started again while running | Home opens; a second copy never runs                                              |
-| `trigger.login`          | Start Pluck when you log in is checked           | Pluck starts with the system, into the tray                                       |
+| `trigger.login`          | Start Pluck when you log in is checked           | Pluck starts with the system, into the tray; no window opens                      |
 | `trigger.cli-menu`       | `pluck menu` is run                              | Same as pressing the hotkey                                                       |
 | `trigger.cli-run`        | `pluck run <id>` is run                          | The action runs on the current selection without showing the menu                 |
 | `trigger.linux`          | Pluck runs on Linux                              | It registers no hotkey of its own; the window manager binds a key to `pluck menu` |

@@ -27,6 +27,9 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+/// Starting with the system passes this, so pluck goes straight to the tray.
+const AUTOSTARTED: &str = "--autostarted";
+
 const WINDOW_STATE: StateFlags = StateFlags::SIZE.union(StateFlags::POSITION).union(StateFlags::MAXIMIZED);
 
 /// Where the menu's text came from.
@@ -118,7 +121,7 @@ pub fn run() {
         })
         .build(),
     )
-    .plugin(tauri_plugin_autostart::Builder::new().build())
+    .plugin(tauri_plugin_autostart::Builder::new().args([AUTOSTARTED]).build())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_opener::init())
@@ -178,6 +181,11 @@ pub fn run() {
         notify(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
       }
       add_tray(app.handle(), &hotkey)?;
+      // Rewrites a login entry made before it carried the flag.
+      let launch = app.autolaunch();
+      if launch.is_enabled().unwrap_or(false) {
+        let _ = launch.enable();
+      }
       started(app.handle(), &std::env::args().collect::<Vec<_>>());
       Ok(())
     })
@@ -185,13 +193,16 @@ pub fn run() {
     .expect("error while running pluck");
 }
 
-/// `pluck menu` opens the menu, whether pluck was running or not; a plain start opens home.
+/// `pluck menu` opens the menu, whether pluck was running or not; a start at login stays in the
+/// tray; any other start opens home.
 fn started(app: &AppHandle, args: &[String]) {
-  if args.get(1).is_some_and(|arg| arg == "menu") {
-    let app = app.clone();
-    thread::spawn(move || open_menu(&app));
-  } else {
-    show_window(app, "home");
+  match args.get(1).map(String::as_str) {
+    Some("menu") => {
+      let app = app.clone();
+      thread::spawn(move || open_menu(&app));
+    }
+    Some(AUTOSTARTED) => {}
+    _ => show_window(app, "home"),
   }
 }
 
