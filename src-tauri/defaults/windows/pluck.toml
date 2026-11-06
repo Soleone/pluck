@@ -6,6 +6,7 @@
 #   run     command line, run in this folder by cmd.exe, or by bash when Settings has Run in WSL.
 #           It gets the selected text on stdin and in PLUCK_TEXT (unless it's very long), plus
 #           PLUCK_APP, PLUCK_TITLE and, for text copied from a browser, PLUCK_URL.
+#   env     optional variables for the script, e.g. env = { VOICE = "af_heart", SPEED = "1.1" }
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "replace" previews it and puts it in place of the selection on Enter,
 #           "notify" (the default for scripts) runs in the background and shows its first line.
@@ -53,3 +54,12 @@ name = "Uppercase"
 key = "u"
 run = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/upper.ps1'
 output = "replace"
+
+[[action]]
+id = "read"
+name = "Read aloud"
+key = "r"
+# Needs uv (https://docs.astral.sh/uv). The first run downloads a 300 MB voice model.
+# Pick it again while it reads to stop. ENGINE = "edge" uses Microsoft's online voices instead.
+run = 'uv run --script scripts/read.py'
+env = { VOICE = "af_heart", SPEED = "1.0" }

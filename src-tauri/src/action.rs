@@ -13,7 +13,8 @@ const MAX_ENV_TEXT: usize = 32_000;
 /// Starts `command` in the platform shell, or in WSL's bash when `wsl` is set on Windows, in `dir`,
 /// with the text on stdin and in PLUCK_TEXT.
 pub fn spawn(command: &str, wsl: bool, dir: &Path, text: &str, env: &[(&str, &str)]) -> io::Result<Child> {
-  let mut shell = shell(command, wsl);
+  let names: Vec<&str> = env.iter().map(|(name, _)| *name).collect();
+  let mut shell = shell(command, wsl, &names);
   shell.current_dir(dir).envs(env.iter().copied());
   if text.len() <= MAX_ENV_TEXT {
     shell.env("PLUCK_TEXT", text);
@@ -60,15 +61,15 @@ fn outcome(status: ExitStatus, stderr: String) -> Result<(), String> {
 const QUIET_LOGIN: &str = r#"{ . /etc/profile; for f in ~/.bash_profile ~/.bash_login ~/.profile; do [ -r "$f" ] && { . "$f"; break; }; done; } >/dev/null 2>&1; eval "$0""#;
 
 #[cfg(windows)]
-fn shell(command: &str, wsl: bool) -> Command {
+fn shell(command: &str, wsl: bool, names: &[&str]) -> Command {
   use std::os::windows::process::CommandExt;
   const CREATE_NO_WINDOW: u32 = 0x0800_0000;
   let mut shell = if wsl {
     // wsl.exe starts in the Windows working folder and passes on the variables WSLENV names.
     let mut shell = Command::new("wsl.exe");
     shell.args(["-e", "bash", "-c", QUIET_LOGIN, command]);
-    let names = "PLUCK_TEXT:PLUCK_APP:PLUCK_TITLE:PLUCK_URL";
-    let wslenv = std::env::var("WSLENV").map_or(names.to_string(), |current| format!("{current}:{names}"));
+    let names = ["PLUCK_TEXT"].iter().chain(names).copied().collect::<Vec<_>>().join(":");
+    let wslenv = std::env::var("WSLENV").map_or(names.clone(), |current| format!("{current}:{names}"));
     shell.env("WSLENV", wslenv);
     shell
   } else {
@@ -81,7 +82,7 @@ fn shell(command: &str, wsl: bool) -> Command {
 }
 
 #[cfg(not(windows))]
-fn shell(command: &str, _wsl: bool) -> Command {
+fn shell(command: &str, _wsl: bool, _names: &[&str]) -> Command {
   let mut shell = Command::new("sh");
   shell.arg("-c").arg(command);
   shell

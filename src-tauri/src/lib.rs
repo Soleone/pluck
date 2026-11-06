@@ -283,6 +283,7 @@ fn run_action(
       if !opened.url.is_empty() {
         env.push(("PLUCK_URL", opened.url.as_str()));
       }
+      env.extend(action.env.iter().map(|(name, value)| (name.as_str(), value.as_str())));
       let dir = config_dir(&app);
       let wsl = config::settings(&dir).wsl;
       let child = action::spawn(&action.run, wsl, &dir, &opened.text, &env).map_err(|error| error.to_string())?;

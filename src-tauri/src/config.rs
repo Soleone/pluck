@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::agent::Harness;
-use std::{fs, io, path::Path};
+use std::{collections::BTreeMap, fs, io, path::Path};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 const DEFAULT_HOTKEY: &str = if cfg!(target_os = "macos") { "Super+Alt+Space" } else { "Ctrl+Alt+Space" };
@@ -9,22 +9,24 @@ const SETTINGS: &str = "settings.json";
 
 /// Written on first run so the menu has something to try.
 #[cfg(windows)]
-const DEFAULT_FILES: [(&str, &str); 6] = [
+const DEFAULT_FILES: [(&str, &str); 7] = [
   ("pluck.toml", include_str!("../defaults/windows/pluck.toml")),
   ("scripts/translate.ps1", include_str!("../defaults/windows/scripts/translate.ps1")),
   ("scripts/search.ps1", include_str!("../defaults/windows/scripts/search.ps1")),
   ("scripts/bookmark.ps1", include_str!("../defaults/windows/scripts/bookmark.ps1")),
   ("scripts/count.ps1", include_str!("../defaults/windows/scripts/count.ps1")),
   ("scripts/upper.ps1", include_str!("../defaults/windows/scripts/upper.ps1")),
+  ("scripts/read.py", include_str!("../defaults/read.py")),
 ];
 #[cfg(not(windows))]
-const DEFAULT_FILES: [(&str, &str); 6] = [
+const DEFAULT_FILES: [(&str, &str); 7] = [
   ("pluck.toml", include_str!("../defaults/unix/pluck.toml")),
   ("scripts/translate.sh", include_str!("../defaults/unix/scripts/translate.sh")),
   ("scripts/search.sh", include_str!("../defaults/unix/scripts/search.sh")),
   ("scripts/bookmark.sh", include_str!("../defaults/unix/scripts/bookmark.sh")),
   ("scripts/count.sh", include_str!("../defaults/unix/scripts/count.sh")),
   ("scripts/upper.sh", include_str!("../defaults/unix/scripts/upper.sh")),
+  ("scripts/read.py", include_str!("../defaults/read.py")),
 ];
 
 /// What happens with a script's stdout or an agent's reply. `Session` is for prompts only: they
@@ -66,6 +68,10 @@ pub struct Action {
   /// Unset model and thinking use the agent settings.
   pub model: Option<String>,
   pub thinking: Option<String>,
+  /// Extra environment variables for the script. Only pluck.toml sets them, so Home never sees or
+  /// rewrites them.
+  #[serde(default, skip_serializing)]
+  pub env: BTreeMap<String, String>,
 }
 
 fn notify() -> Output {
@@ -241,7 +247,7 @@ mod tests {
   use super::*;
 
   fn prompt(id: &str, text: &str) -> Action {
-    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None }
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None, env: BTreeMap::new() }
   }
 
   fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
@@ -301,6 +307,18 @@ mod tests {
     let dir = dir_with("one-off", "[[action]]\nid = \"a\"\nname = \"A\"\nagent = \"x\"\n\n[[action]]\nid = \"b\"\nname = \"B\"\nagent = \"x\"\ninteractive = false\n");
     let outputs: Vec<_> = load(&dir).actions.into_iter().map(|action| action.output).collect();
     assert!(outputs == [Output::Session, Output::Show]);
+  }
+
+  #[test]
+  // action.env
+  fn action_env_loads_and_survives_saving() {
+    let dir = dir_with("env", "[[action]]\nid = \"r\"\nname = \"R\"\nrun = \"r\"\nenv = { VOICE = \"af_heart\" }\n");
+    let mut actions = load(&dir).actions;
+    assert_eq!(actions[0].env, BTreeMap::from([("VOICE".into(), "af_heart".into())]));
+    actions[0].env.clear();
+    actions[0].name = "Read".into();
+    save_actions(&dir, &actions).unwrap();
+    assert_eq!(load(&dir).actions[0].env.get("VOICE").map(String::as_str), Some("af_heart"));
   }
 
   #[test]
