@@ -71,23 +71,26 @@ export function Home() {
             <img src="/favicon.svg" alt="" className="size-5" />
             Pluck
           </span>
-          <span className="flex items-center gap-1">
-            <Button
-              variant={view === "actions" ? "secondary" : "ghost"}
-              size="sm"
-              aria-pressed={view === "actions"}
-              onClick={() => setView("actions")}
-            >
-              <Zap />
-              Actions
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => void bridge.showAgents()}>
-              <Bot />
-              Agents
-            </Button>
-          </span>
+          <Button
+            variant={view === "actions" ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={view === "actions"}
+            onClick={() => setView("actions")}
+          >
+            <Zap />
+            Actions
+          </Button>
         </span>
         <span className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Agents"
+            title="Agents"
+            onClick={() => void bridge.showAgents()}
+          >
+            <Bot />
+          </Button>
           <ThemePicker />
           <Button
             variant={view === "settings" ? "secondary" : "ghost"}

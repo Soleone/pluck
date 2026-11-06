@@ -112,7 +112,7 @@ Each action's `output` says what happens with the script's stdout, or the agent'
 
 ## Home
 
-A normal window with two views, Actions and Settings. The top bar has Actions and Agents next to the title, and the theme and Settings buttons at the right. Closing it hides it; pluck keeps running in the tray.
+A normal window with two views, Actions and Settings. The top bar has Actions next to the title, and the Agents, theme and Settings buttons at the right; Agents opens its own window. Closing it hides it; pluck keeps running in the tray.
 
 | Rule                    | When                                              | Then                                                                                                                                                    |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
