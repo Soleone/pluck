@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/Soleone/pluck/compare/v0.1.5...v0.2.0) (2026-11-06)
+
+### Features
+
+* **actions:** a progress output shows a card with Stop while it runs, and notify only shows the result, in place of quiet ([33b0ec9](https://github.com/Soleone/pluck/commit/33b0ec94bcb0de4269aa572afdea4fe505b8351f))
+* **actions:** env table passes your own variables to a script, and a Read aloud sample speaks the text with Kokoro or Edge voices ([de018bf](https://github.com/Soleone/pluck/commit/de018bf4786b89de98deafc0bffdfc624f78f72e))
+* **actions:** quiet = true runs an action with no card until its result, for actions you start several of ([cb18dd2](https://github.com/Soleone/pluck/commit/cb18dd2621cee8a96739097411f86821201a0ac0))
+* **home:** actions and agents sit by the title, settings moves to a gear button, config files behind a ⋯ menu ([f0f2933](https://github.com/Soleone/pluck/commit/f0f2933e577320cffe80f596f4c7dfc91df97d91))
+* **home:** agents becomes an icon button beside the theme picker, since it opens its own window ([f5ae75e](https://github.com/Soleone/pluck/commit/f5ae75e38f4732ce151b7b2d66b2e55703bdf004))
+* **home:** settings open in a dialog, so Home is just the action list ([955a60f](https://github.com/Soleone/pluck/commit/955a60f063cbf7e67abe4e43e22315941c719821))
+* **overlay:** background actions show on cards at the bottom of the screen with a Stop button, in place of system notifications ([f41726a](https://github.com/Soleone/pluck/commit/f41726a4875485a9aa7934caa75083653e9186a4))
+* **overlay:** quick actions show only their result, and a notify script's last line is its result, so a script can print status as it goes ([fbd2775](https://github.com/Soleone/pluck/commit/fbd2775ac931a44ea855035d0c4ceacedbb5df9c))
+
+### Bug Fixes
+
+* **overlay:** status icon centers on the card's title line ([ff86a60](https://github.com/Soleone/pluck/commit/ff86a60f16e541f336c48afc1524db489c9341a3))
+
 ## [0.1.5](https://github.com/Soleone/pluck/compare/v0.1.4...v0.1.5) (2026-11-06)
 
 ### Features
