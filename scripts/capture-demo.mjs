@@ -5,7 +5,7 @@
 // Needs agent-browser (with its browser installed) and FFmpeg on the PATH. Serve the build first,
 // for example `pnpm build && pnpm preview`.
 import { parseArgs } from "node:util";
-import { record } from "@soleone/showcase/capture";
+import { record } from "@soleone/showcase-capture";
 
 const { values } = parseArgs({
   options: {

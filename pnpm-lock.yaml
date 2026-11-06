@@ -233,9 +233,9 @@ importers:
       '@shadcn/lint':
         specifier: ^0.2.5
         version: 0.2.5
-      '@soleone/showcase':
-        specifier: ^0.3.0
-        version: 0.3.0
+      '@soleone/showcase-capture':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@tailwindcss/vite':
         specifier: ^4.3.4
         version: 4.3.4(@voidzero-dev/vite-plus-core@1.2.0(@types/node@24.19.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
@@ -1593,10 +1593,9 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
-  '@soleone/showcase@0.3.0':
-    resolution: {integrity: sha512-/HanJT6lE4oIscsNZ4b9c4/7/7gJvc1u9Yw0PNwdLXMqKZHLthHd8/1uGGKBCwp1Mf4Bz3p3aPZccD2eh15qyg==}
+  '@soleone/showcase-capture@0.1.0':
+    resolution: {integrity: sha512-tOEzyR8/mHG8U/7Jlg+zLYfK2XkOyI7Fw4cJx44bzZTrtc4KwHjt487vB1U+bAIWJ6fjca2p8z4pvcPKg12EhQ==}
     engines: {node: '>=22'}
-    hasBin: true
 
   '@tailwindcss/node@4.3.4':
     resolution: {integrity: sha512-b7QK/QG04v3j04NbpG82XLCedRyulnkuwUDwRa9oK/ypnJIzMapz2Wg+0TltVczjUzDaJJHIa1+jj9aMUOFMTQ==}
@@ -5081,7 +5080,7 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@soleone/showcase@0.3.0': {}
+  '@soleone/showcase-capture@0.1.0': {}
 
   '@tailwindcss/node@4.3.4':
     dependencies:
