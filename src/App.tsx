@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Agents } from "@/Agents";
 import { Home } from "@/Home";
+import { Overlay } from "@/Overlay";
 import { Popup } from "@/Popup";
 import { SHOW_AGENTS_EVENT } from "@/bridge";
 import { Corner, DownloadButton } from "@/components/live/corners";
@@ -12,6 +13,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export function App() {
   if (isTauri()) {
     const label = getCurrentWindow().label;
+    if (label === "overlay")
+      return (
+        <div data-overlay className="flex h-svh flex-col justify-end">
+          <Overlay />
+        </div>
+      );
     if (label === "agents")
       return (
         <div className="h-svh bg-background text-foreground">
@@ -76,6 +83,11 @@ function Prototype() {
           </div>
         )}
       </main>
+      <div className="fixed inset-x-0 bottom-4 flex justify-center">
+        <div className="w-95">
+          <Overlay />
+        </div>
+      </div>
       <Corner side="right">
         <DownloadButton href={RELEASES_URL} />
       </Corner>

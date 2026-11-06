@@ -76,6 +76,17 @@ export type Opened = {
 /** Progress of a `show` or `replace` action; `run` is the number the menu passed to `run()`. */
 type RunEvent = { run: number; line: string | null; done: boolean; error: string | null };
 
+/** A card in the overlay: an action running in the background, its result, or a problem. A
+ * `stopped` card goes away. */
+export type Card = {
+  id: number;
+  title: string;
+  text: string;
+  status: "running" | "done" | "failed" | "stopped";
+  /** Running scripts can be stopped; agent replies can't. */
+  stoppable: boolean;
+};
+
 /** What the home screen shows. */
 export type HomeState = {
   version: string;
@@ -134,6 +145,12 @@ type Bridge = {
   onAgent(listener: (event: AgentEvent) => void): () => void;
   onAgentRequest(listener: (request: AgentRequest) => void): () => void;
   showAgents(): Promise<void>;
+  /** Calls the listener for each card, starting with those shown before anything listened. */
+  onCard(listener: (card: Card) => void): () => void;
+  /** Ends a running script and everything it started. */
+  stopRun(id: number): Promise<void>;
+  /** Sizes the overlay window to its cards, hiding it at 0. */
+  fitOverlay(height: number): Promise<void>;
 };
 
 function subscribe<T>(event: string, listener: (payload: T) => void) {
@@ -182,6 +199,13 @@ const native: Bridge = {
   onAgent: (listener) => subscribe("pluck://agent", listener),
   onAgentRequest: (listener) => subscribe("pluck://agent-request", listener),
   showAgents: () => invoke("show_agents"),
+  onCard(listener) {
+    const stop = listen<Card>("pluck://card", ({ payload }) => listener(payload));
+    void stop.then(() => invoke("overlay_ready"));
+    return () => void stop.then((unlisten) => unlisten());
+  },
+  stopRun: (id) => invoke("stop_run", { id }),
+  fitOverlay: (height) => invoke("fit_overlay", { height }),
 };
 
 const sessionDefaults = { model: null, thinking: null };
@@ -229,9 +253,18 @@ const sample: Opened = {
     scriptAction("bookmark", "Save as bookmark", "b"),
     scriptAction("count", "Count words", "w", "show"),
     scriptAction("upper", "Uppercase", "u", "replace"),
+    { ...scriptAction("read", "Read aloud", "r"), run: "uv run --script scripts/read.py" },
   ],
   problems: [],
   lastSession: null,
+};
+
+/** What the sample's background actions end with, and how long they take in ms. */
+const backgroundResults: Record<string, [string, number]> = {
+  translate: ["Opened Google Translate", 900],
+  search: ["Opened the search", 700],
+  bookmark: ["Saved to bookmarks", 1200],
+  read: ["Done", 12_000],
 };
 
 /** How the menu hands its text to an agent, after the action's prompt or the question. */
@@ -327,6 +360,25 @@ function prototype(): Bridge {
   let openListener: ((opened: Opened) => void) | undefined;
   let runListener: ((event: RunEvent) => void) | undefined;
   let agentListener: ((event: AgentEvent) => void) | undefined;
+  let cardListener: ((card: Card) => void) | undefined;
+  let cardCount = 0;
+  const finishing = new Map<number, { card: Card; timer: number }>();
+  const runInBackground = (action: Action) => {
+    const [text, ms] = backgroundResults[action.id] ?? ["Done", 1000];
+    const card: Card = {
+      id: ++cardCount,
+      title: action.name,
+      text: "",
+      status: "running",
+      stoppable: !action.agent,
+    };
+    cardListener?.(card);
+    const timer = window.setTimeout(() => {
+      finishing.delete(card.id);
+      cardListener?.({ ...card, text, status: "done", stoppable: false });
+    }, ms);
+    finishing.set(card.id, { card, timer });
+  };
   // Agents only listens while its view is shown, so the request waits for it.
   let pendingRequest: AgentRequest | undefined;
   const dismiss = async () =>
@@ -361,6 +413,10 @@ function prototype(): Bridge {
           () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
           300,
         );
+      if (action && (output === "notify" || output === "copy")) {
+        runInBackground(action);
+        return dismiss();
+      }
       if (output !== "show") return dismiss();
       const lines =
         actionId === "count" ? [`${sample.text.split(/\s+/).length} words\n`] : cannedLines;
@@ -473,6 +529,18 @@ function prototype(): Bridge {
       return () => {};
     },
     showAgents: async () => void window.dispatchEvent(new Event(SHOW_AGENTS_EVENT)),
+    onCard(listener) {
+      cardListener = listener;
+      return () => (cardListener = undefined);
+    },
+    async stopRun(id) {
+      const run = finishing.get(id);
+      if (!run) return;
+      clearTimeout(run.timer);
+      finishing.delete(id);
+      cardListener?.({ ...run.card, status: "stopped" });
+    },
+    fitOverlay: async () => {},
   };
 }
 

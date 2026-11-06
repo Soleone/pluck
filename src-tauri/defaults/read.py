@@ -2,8 +2,8 @@
 # requires-python = ">=3.12"
 # dependencies = ["kokoro-onnx>=0.4", "sounddevice", "edge-tts", "miniaudio"]
 # ///
-"""Reads the text on stdin aloud, starting after the first few sentences are ready.
-Running it again while it reads stops it.
+"""Reads the text on stdin aloud, starting once the first few sentences are ready. Its card at the
+bottom of the screen stops it.
 
 Settings come from the action's env in pluck.toml:
   ENGINE  "kokoro" (local, the default) or "edge" (Microsoft's online voices, needs internet)
@@ -16,7 +16,6 @@ import hashlib
 import os
 import queue
 import re
-import socket
 import sys
 import threading
 import urllib.request
@@ -26,8 +25,6 @@ import numpy as np
 import sounddevice
 
 RATE = 24_000
-# Whoever holds this port is reading; connecting to it tells that reader to stop.
-STOP_PORT = 48_731
 CHUNK = 300
 MODEL_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache") / "pluck" / "kokoro"
 MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/"
@@ -38,16 +35,6 @@ MODEL_FILES = {
 
 
 def main():
-    listener = socket.socket()
-    try:
-        listener.bind(("127.0.0.1", STOP_PORT))
-    except OSError:
-        socket.create_connection(("127.0.0.1", STOP_PORT)).close()
-        print("Stopped")
-        return
-    listener.listen()
-    threading.Thread(target=stop_when_asked, args=(listener,), daemon=True).start()
-
     text = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     engine = os.environ.get("ENGINE", "kokoro")
     speed = float(os.environ.get("SPEED", "1.0"))
@@ -58,14 +45,6 @@ def main():
     else:
         raise ValueError(f'ENGINE is "{engine}", but it can only be "kokoro" or "edge"')
     play(speak, chunks(text))
-
-
-def stop_when_asked(listener):
-    connection, _ = listener.accept()
-    # Waiting for the other side to close first keeps the port free for the next run.
-    connection.recv(1)
-    print("Stopped", flush=True)
-    os._exit(0)
 
 
 def chunks(text):

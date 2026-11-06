@@ -55,6 +55,20 @@ fn outcome(status: ExitStatus, stderr: String) -> Result<(), String> {
   Err(if stderr.is_empty() { format!("Exited with {status}") } else { stderr.to_string() })
 }
 
+/// Ends the process `pid` started by `spawn`, with everything it started, like a script's
+/// interpreter under the shell.
+pub fn kill(pid: u32) {
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).stdout(Stdio::null()).creation_flags(CREATE_NO_WINDOW).status();
+  }
+  // `spawn` starts the shell in a process group of its own, named after its pid.
+  #[cfg(not(windows))]
+  let _ = Command::new("kill").args(["-TERM", "--", &format!("-{pid}")]).status();
+}
+
 /// Like `bash -l`, for the PATH a profile sets, but a profile's greetings don't end up in the
 /// script's output. `$0` is the command.
 #[cfg(windows)]
@@ -83,7 +97,25 @@ fn shell(command: &str, wsl: bool, names: &[&str]) -> Command {
 
 #[cfg(not(windows))]
 fn shell(command: &str, _wsl: bool, _names: &[&str]) -> Command {
+  use std::os::unix::process::CommandExt;
   let mut shell = Command::new("sh");
-  shell.arg("-c").arg(command);
+  shell.arg("-c").arg(command).process_group(0);
   shell
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::time::{Duration, Instant};
+
+  #[test]
+  // overlay.stop
+  fn overlay_stop_ends_the_script_and_what_it_started() {
+    let command = if cfg!(windows) { "ping -n 30 127.0.0.1 >nul" } else { "sleep 30; echo late" };
+    let child = spawn(command, false, &std::env::temp_dir(), "", &[]).unwrap();
+    let started = Instant::now();
+    kill(child.id());
+    assert!(stream(child, |_| panic!("it printed after being stopped")).is_err());
+    assert!(started.elapsed() < Duration::from_secs(10));
+  }
 }

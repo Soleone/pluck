@@ -59,6 +59,6 @@ id = "read"
 name = "Read aloud"
 key = "r"
 # Needs uv (https://docs.astral.sh/uv). The first run downloads a 300 MB voice model.
-# Pick it again while it reads to stop. ENGINE = "edge" uses Microsoft's online voices instead.
+# Stop it from its card at the bottom of the screen. ENGINE = "edge" uses Microsoft's online voices instead.
 run = 'uv run --script scripts/read.py'
 env = { VOICE = "af_heart", SPEED = "1.0" }

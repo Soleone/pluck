@@ -68,6 +68,12 @@
   }
 }
 
+/* The overlay window is see-through around its cards. */
+html:has([data-overlay]),
+html:has([data-overlay]) body {
+  background: transparent;
+}
+
 /* The menu (Popup). Moving the highlight stays instant: it answers the keyboard, it isn't decoration. */
 [data-menu] [data-slot="command-item"][data-selected="true"] > svg:first-child {
   color: var(--primary);

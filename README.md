@@ -8,7 +8,7 @@ Select text in any app, press a hotkey, and send it to your own scripts or an AI
 
 ## What it does
 
-Every action is one entry in a config file. An action either runs a command, which gets the selected text on stdin, or sends a prompt to an agent. Its output can stream into a small panel, go to the clipboard, show as a notification, or replace the selection. Anything a script can do (translate, look up, bookmark, reformat) becomes a keystroke from any app.
+Every action is one entry in a config file. An action either runs a command, which gets the selected text on stdin, or sends a prompt to an agent. Its output can stream into a small panel, go to the clipboard, show on a small card at the bottom of the screen, or replace the selection. Anything a script can do (translate, look up, bookmark, reformat) becomes a keystroke from any app.
 
 - **Fast:** the menu opens at the cursor in under 100 ms. Each action has a key, so `Ctrl+Alt+Space`, `E` runs Explain.
 - **Ask anything:** type a question instead of picking an action, and an agent gets it along with the selected text, the app and the page it came from.

@@ -2,6 +2,7 @@ mod action;
 mod agent;
 mod config;
 mod grab;
+mod overlay;
 
 use agent::{AgentSession, Agents, Model};
 use config::{Action, AgentSettings, Output};
@@ -23,7 +24,6 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
@@ -123,19 +123,19 @@ pub fn run() {
     )
     .plugin(tauri_plugin_autostart::Builder::new().args([AUTOSTARTED]).build())
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
-    // The menu opens at the cursor, so only home and agents come back where they were.
+    // The menu opens at the cursor and the overlay under it, so only home and agents come back where they were.
     .plugin(
       tauri_plugin_window_state::Builder::default()
         .with_state_flags(WINDOW_STATE)
-        .with_denylist(&["menu"])
+        .with_denylist(&["menu", "overlay"])
         .build(),
     )
     .manage(Mutex::new(Session::default()))
     .manage(Agents::default())
+    .manage(overlay::Overlay::default())
     .invoke_handler(tauri::generate_handler![
       run_action,
       ask,
@@ -158,7 +158,10 @@ pub fn run() {
       agent_start,
       agent_send,
       agent_remove,
-      show_agents
+      show_agents,
+      overlay::overlay_ready,
+      overlay::stop_run,
+      overlay::fit_overlay
     ])
     .on_window_event(|window, event| match event {
       WindowEvent::Focused(false) if window.label() == "menu" => {
@@ -178,7 +181,7 @@ pub fn run() {
       if cfg!(not(target_os = "linux"))
         && let Err(error) = app.global_shortcut().register(hotkey.as_str())
       {
-        notify(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
+        overlay::problem(app.handle(), "Pluck has no hotkey", &format!("{hotkey} couldn't be registered: {error}"));
       }
       add_tray(app.handle(), &hotkey)?;
       // Rewrites a login entry made before it carried the flag.
@@ -260,7 +263,8 @@ fn run_action(
   run: u32,
   continue_session: bool,
 ) -> Result<(), String> {
-  let (action, produce): (Action, Box<Produce>) = {
+  // `pid` is a script's, so its overlay card can stop it.
+  let (action, pid, produce): (Action, Option<u32>, Box<Produce>) = {
     let session = session.lock().unwrap();
     let opened = &session.opened;
     let action = opened.actions.iter().find(|action| action.id == id).cloned().ok_or("Unknown action")?;
@@ -277,7 +281,7 @@ fn run_action(
         return Ok(());
       }
       let (app, prompt_action) = (app.clone(), action.clone());
-      (action, Box::new(move |on_text: &mut dyn FnMut(String)| one_off(&app, &prompt_action, &prompt, on_text)))
+      (action, None, Box::new(move |on_text: &mut dyn FnMut(String)| one_off(&app, &prompt_action, &prompt, on_text)))
     } else {
       let mut env = vec![("PLUCK_APP", opened.app.as_str()), ("PLUCK_TITLE", opened.title.as_str())];
       if !opened.url.is_empty() {
@@ -287,7 +291,7 @@ fn run_action(
       let dir = config_dir(&app);
       let wsl = config::settings(&dir).wsl;
       let child = action::spawn(&action.run, wsl, &dir, &opened.text, &env).map_err(|error| error.to_string())?;
-      (action, Box::new(move |on_line: &mut dyn FnMut(String)| action::stream(child, on_line)))
+      (action, Some(child.id()), Box::new(move |on_line: &mut dyn FnMut(String)| action::stream(child, on_line)))
     }
   };
   match action.output {
@@ -296,7 +300,7 @@ fn run_action(
     }
     Output::Copy | Output::Notify => {
       hide_menu(&app);
-      thread::spawn(move || finish_in_background(&app, &action, produce));
+      thread::spawn(move || finish_in_background(&app, &action, pid, produce));
     }
     Output::Session => unreachable!("only prompts open a session, and they returned above"),
   }
@@ -328,7 +332,7 @@ fn replace(app: AppHandle, text: String) {
       grab::paste(&session.target, &text)
     };
     if let Err(error) = result {
-      notify(&app, "Couldn't replace the text", &error);
+      overlay::problem(&app, "Couldn't replace the text", &error);
     }
   });
 }
@@ -566,21 +570,25 @@ fn show(app: &AppHandle, run: u32, produce: Box<Produce>) {
   emit(RunEvent { run, line: None, done: true, error: result.err() });
 }
 
-/// Copies the output, or notifies with a script's first line or the agent's whole reply.
-fn finish_in_background(app: &AppHandle, action: &Action, produce: Box<Produce>) {
-  let failed = format!("{} failed", action.name);
+/// Shows the action on an overlay card: while it runs, a notify action's latest line; then "Copied", the
+/// script's first line or the agent's whole reply.
+fn finish_in_background(app: &AppHandle, action: &Action, pid: Option<u32>, produce: Box<Produce>) {
+  let card = overlay::start(app, &action.name, pid);
   let mut output = String::new();
-  if let Err(error) = produce(&mut |text| output.push_str(&text)) {
-    return notify(app, &failed, &error);
-  }
-  if action.output == Output::Copy {
-    return match grab::set_clipboard(output.trim_end_matches(['\r', '\n'])) {
-      Ok(()) => notify(app, &action.name, "Copied"),
-      Err(error) => notify(app, &failed, &error),
-    };
-  }
-  let body = if action.agent.is_some() { output.trim() } else { output.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("") };
-  notify(app, &action.name, if body.is_empty() { "Done" } else { body });
+  let result = produce(&mut |text| {
+    output.push_str(&text);
+    if action.output == Output::Notify {
+      overlay::progress(app, card, output.trim_end().rsplit('\n').next().unwrap_or("").trim());
+    }
+  });
+  let result = result.and_then(|()| {
+    if action.output == Output::Copy {
+      return grab::set_clipboard(output.trim_end_matches(['\r', '\n'])).map(|()| "Copied".into());
+    }
+    let body = if action.agent.is_some() { output.trim() } else { output.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("") };
+    Ok(if body.is_empty() { "Done" } else { body }.into())
+  });
+  overlay::finish(app, card, result);
 }
 
 fn hide_menu(app: &AppHandle) {
@@ -636,10 +644,6 @@ fn add_tray(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     })
     .build(app)?;
   Ok(())
-}
-
-fn notify(app: &AppHandle, title: &str, body: &str) {
-  let _ = app.notification().builder().title(title).body(body).show();
 }
 
 fn menu_window(app: &AppHandle) -> WebviewWindow {

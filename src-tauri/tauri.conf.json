@@ -40,11 +40,28 @@
         "minWidth": 640,
         "minHeight": 420,
         "visible": false
+      },
+      {
+        "label": "overlay",
+        "title": "Pluck",
+        "width": 380,
+        "height": 80,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "focusable": false,
+        "acceptFirstMouse": true,
+        "shadow": false,
+        "visible": false
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
