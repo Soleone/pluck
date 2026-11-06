@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.5](https://github.com/Soleone/pluck/compare/v0.1.4...v0.1.5) (2026-11-06)
+
+### Features
+
+* a hosted browser demo, a real README and showcase.json ([4f447a8](https://github.com/Soleone/pluck/commit/4f447a82632bfded3218b12a7270bc0eec87fcc0))
+* **actions:** the action dialog keeps its size between prompt and script, with a menu preview and output tiles ([3c4dfe1](https://github.com/Soleone/pluck/commit/3c4dfe1fb9705db5a7996d769a6e602f762cb375))
+* **agents:** sessions can run on Claude Code or Codex besides Pi ([156810e](https://github.com/Soleone/pluck/commit/156810efef3156480a4381d257845106b0e01105))
+* color the icon in Gilt's light blue instead of jade ([5c3a0ac](https://github.com/Soleone/pluck/commit/5c3a0ac3b92274740950af825ff4f77c2e8469e0))
+* the Esc and Enter hints under a result panel can be clicked ([d41d188](https://github.com/Soleone/pluck/commit/d41d1884688a964bb58ad6d2518e428229b8806c))
+* **web:** the demo's corners come from showcase-live-kit, with the animated download button ([926a50f](https://github.com/Soleone/pluck/commit/926a50f22342a1dcc5304376c3fde3a1fb213ee8))
+* **web:** the demo's download button sits in the bottom right corner, as in tasks ([144c5db](https://github.com/Soleone/pluck/commit/144c5db4aa58f6c32bf961aac57768ff23643e1f))
+
+### Bug Fixes
+
+* **agents:** the thinking list marks the default level without naming Pi ([c3ab36e](https://github.com/Soleone/pluck/commit/c3ab36eeb714aafdbe76a5a868689d5ac6277480))
+* starting at login stays in the tray instead of opening home ([a24b4b3](https://github.com/Soleone/pluck/commit/a24b4b3551529d455ba5f9b05c95158e3abb9097))
+
 ## [0.1.4](https://github.com/Soleone/pluck/compare/v0.1.3...v0.1.4) (2026-11-05)
 
 ### Features
