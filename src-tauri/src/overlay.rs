@@ -53,14 +53,17 @@ struct Cards {
 #[derive(Default)]
 pub struct Overlay(Mutex<Cards>);
 
-/// Starts a run for `title`, shown as a running card once it outlasts `SPINNER_DELAY`, and returns
-/// its id for `progress` and `finish`.
-pub fn start(app: &AppHandle, title: &str, pid: Option<u32>) -> u32 {
+/// Starts a run for `title`, shown as a running card once it outlasts `SPINNER_DELAY` unless it's
+/// `quiet`, and returns its id for `progress` and `finish`.
+pub fn start(app: &AppHandle, title: &str, pid: Option<u32>, quiet: bool) -> u32 {
   let overlay = app.state::<Overlay>();
   let mut cards = overlay.0.lock().unwrap();
   cards.next_id += 1;
   let id = cards.next_id;
   cards.running.insert(id, Run { title: title.into(), pid, text: String::new(), shown: false });
+  if quiet {
+    return id;
+  }
   let app = app.clone();
   thread::spawn(move || {
     thread::sleep(SPINNER_DELAY);
@@ -101,7 +104,7 @@ pub fn finish(app: &AppHandle, id: u32, result: Result<String, String>) {
 
 /// Shows a problem on its own card.
 pub fn problem(app: &AppHandle, title: &str, text: &str) {
-  let id = start(app, title, None);
+  let id = start(app, title, None, true);
   finish(app, id, Err(text.into()));
 }
 

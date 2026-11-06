@@ -573,7 +573,7 @@ fn show(app: &AppHandle, run: u32, produce: Box<Produce>) {
 /// Shows the action on an overlay card: while it runs, a notify action's latest line; then "Copied", the
 /// script's first line or the agent's whole reply.
 fn finish_in_background(app: &AppHandle, action: &Action, pid: Option<u32>, produce: Box<Produce>) {
-  let card = overlay::start(app, &action.name, pid);
+  let card = overlay::start(app, &action.name, pid, action.quiet);
   let mut output = String::new();
   let result = produce(&mut |text| {
     output.push_str(&text);
