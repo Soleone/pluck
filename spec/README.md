@@ -112,20 +112,20 @@ Each action's `output` says what happens with the script's stdout, or the agent'
 
 ## Home
 
-A normal window with two tabs, Settings and Actions. Closing it hides it; pluck keeps running in the tray.
+A normal window with two views, Actions and Settings. The top bar has Actions and Agents next to the title, and the theme and Settings buttons at the right. Closing it hides it; pluck keeps running in the tray.
 
 | Rule                    | When                                              | Then                                                                                                                                                    |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `home.tabs`             | Home opens                                        | It shows the Settings tab; Actions is one click away                                                                                                    |
+| `home.tabs`             | Home opens                                        | It shows Actions; the gear button at the far right shows Settings                                                                                       |
 | `home.window`           | Home or Agents opens                              | It has the size and place it had when last moved or resized, or maximized; the first time, Home is big enough to show all of Settings without scrolling |
-| `home.theme`            | The palette button right of Agents is used        | A theme is picked from the ring; every open window switches to it and it stays picked                                                                   |
+| `home.theme`            | The palette button left of Settings is used       | A theme is picked from the ring; every open window switches to it and it stays picked                                                                   |
 | `settings.login`        | Start Pluck when you log in is clicked            | Pluck starts, or stops starting, with the system                                                                                                        |
 | `settings.wsl`          | Run in WSL is checked (Windows only)              | Scripts run in WSL's bash and agents use the harness installed there, with WSL paths                                                                    |
 | `settings.hotkey`       | The hotkey button is clicked and keys are pressed | The new hotkey takes effect immediately and is saved; `Esc` keeps the old one. On Linux the section says how to bind `pluck menu` instead               |
 | `settings.hotkey-taken` | The pressed hotkey can't be registered            | The old hotkey stays and a line says the new one is taken                                                                                               |
 | `actions-tab.list`      | The Actions tab is open                           | It lists the actions in menu order with their key, icon, and prompt or command, plus any config problems                                                |
 | `actions-tab.reload`    | Home gets focus                                   | The list is read from `pluck.toml` again                                                                                                                |
-| `actions-tab.files`     | "Edit pluck.toml" or "Open folder"                | The file opens in its default app, or the config folder in the file manager                                                                             |
+| `actions-tab.files`     | "Edit pluck.toml" or "Open folder" in the ⋯ menu  | The file opens in its default app, or the config folder in the file manager                                                                             |
 | `actions-tab.prompt`    | New action is clicked                             | A dialog asks for a name, a key, a prompt the agent gets with the selected text and an output, a session by default; Script switches it to a command    |
 | `actions-tab.kind`      | Prompt and Script are switched                    | The dialog keeps its size, and what was typed for either stays until it is closed; Script lists what the script gets from pluck                         |
 | `actions-tab.preview`   | An action is edited                               | A row at the top shows it as the menu will, with its icon, name and key, while it is typed                                                              |

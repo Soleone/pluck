@@ -1,5 +1,15 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Plus, Sparkles, SquareTerminal, Terminal } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Ellipsis,
+  FileCode,
+  FolderOpen,
+  Plus,
+  Sparkles,
+  SquareTerminal,
+  Terminal,
+} from "lucide-react";
 import { cn } from "cn";
 import { bridge, type Action, type AgentSettings, type HomeState } from "@/bridge";
 import { ActionIcon, OUTPUT_ICONS } from "@/ActionIcon";
@@ -16,9 +26,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { CodeInput } from "@/components/variants/CodeInput";
+import { MenuContent } from "@/components/variants/MenuContent";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -71,21 +83,25 @@ export function ActionsTab({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
-        <p className="truncate text-muted-foreground" title={state.configDir}>
-          What the menu offers, saved to pluck.toml in {state.configDir}
-        </p>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="outline" size="sm" onClick={() => void bridge.openConfigFolder()}>
-            Open folder
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => void bridge.editConfig()}>
-            Edit pluck.toml
-          </Button>
-          <Button size="sm" onClick={() => setEditing("new")}>
-            <Plus />
-            New action
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setEditing("new")}>
+          <Plus />
+          New action
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More" />}>
+            <Ellipsis />
+          </DropdownMenuTrigger>
+          <MenuContent align="end">
+            <DropdownMenuItem onClick={() => void bridge.openConfigFolder()}>
+              <FolderOpen />
+              Open folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void bridge.editConfig()}>
+              <FileCode />
+              Edit pluck.toml
+            </DropdownMenuItem>
+          </MenuContent>
+        </DropdownMenu>
       </div>
       {[...state.problems, problem].filter(Boolean).map((line) => (
         <p key={line} className="text-destructive">

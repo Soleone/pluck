@@ -18,14 +18,13 @@ import {
   type Catalog,
 } from "@/ModelPicker";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
-import { Bot } from "lucide-react";
+import { Bot, Settings, Zap } from "lucide-react";
 import { ThemePicker } from "@/components/soleone/theme-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function errorText(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
@@ -34,6 +33,7 @@ function errorText(caught: unknown): string {
 /** The window behind the tray icon and the bare hotkey: settings and the menu's actions. */
 export function Home() {
   const [state, setState] = useState<HomeState | null>(null);
+  const [view, setView] = useState<"actions" | "settings">("actions");
   const [asked, setAsked] = useState<{ wsl: boolean; harness: Harness; catalog: Catalog } | null>(
     null,
   );
@@ -65,25 +65,43 @@ export function Home() {
   return (
     <div className="flex h-full flex-col">
       <UpdateBanner />
-      <Tabs defaultValue="settings" className="m-4 min-h-0 flex-1">
-        <header className="mb-2 flex items-center justify-between">
+      <header className="m-4 mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-4">
           <span className="flex items-center gap-2 font-heading font-medium">
             <img src="/favicon.svg" alt="" className="size-5" />
             Pluck
           </span>
-          <span className="flex items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="actions">Actions</TabsTrigger>
-            </TabsList>
-            <Button variant="outline" size="sm" onClick={() => void bridge.showAgents()}>
+          <span className="flex items-center gap-1">
+            <Button
+              variant={view === "actions" ? "secondary" : "ghost"}
+              size="sm"
+              aria-pressed={view === "actions"}
+              onClick={() => setView("actions")}
+            >
+              <Zap />
+              Actions
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => void bridge.showAgents()}>
               <Bot />
               Agents
             </Button>
-            <ThemePicker />
           </span>
-        </header>
-        <TabsContent value="settings" className="min-h-0 overflow-auto">
+        </span>
+        <span className="flex items-center gap-1">
+          <ThemePicker />
+          <Button
+            variant={view === "settings" ? "secondary" : "ghost"}
+            size="icon-sm"
+            aria-label="Settings"
+            aria-pressed={view === "settings"}
+            onClick={() => setView("settings")}
+          >
+            <Settings />
+          </Button>
+        </span>
+      </header>
+      <main className="mx-4 mb-4 min-h-0 flex-1 overflow-auto">
+        {view === "settings" ? (
           <div className="flex flex-col gap-4">
             <HotkeySetting
               hotkey={state.hotkey}
@@ -99,15 +117,14 @@ export function Home() {
             />
             <p className="text-muted-foreground">Pluck {state.version}</p>
           </div>
-        </TabsContent>
-        <TabsContent value="actions" className="min-h-0 overflow-auto">
+        ) : (
           <ActionsTab
             state={state}
             catalog={catalog}
             onChange={(actions) => setState({ ...state, actions })}
           />
-        </TabsContent>
-      </Tabs>
+        )}
+      </main>
     </div>
   );
 }
