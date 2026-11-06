@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Plus, Sparkles, SquareTerminal, Terminal } from "lucide-react";
+import { cn } from "cn";
 import { bridge, type Action, type AgentSettings, type HomeState } from "@/bridge";
-import { ActionIcon } from "@/ActionIcon";
-import { ChoiceField } from "@/ChoiceField";
+import { ActionIcon, OUTPUT_ICONS } from "@/ActionIcon";
+import { ChoiceTiles } from "@/ChoiceTiles";
 import { newId, suggestKey } from "@/menuActions";
 import { ModelPicker, effectiveModel, loaded, piStart, type Catalog } from "@/ModelPicker";
 import { Badge } from "@/components/ui/badge";
@@ -17,17 +18,28 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { CodeInput } from "@/components/variants/CodeInput";
 import { Kbd } from "@/components/ui/kbd";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 const OUTPUTS = [
-  { value: "show", label: "Show in a panel" },
-  { value: "replace", label: "Replace the selection" },
-  { value: "copy", label: "Copy to the clipboard" },
-  { value: "notify", label: "Notify when done" },
+  { value: "show", label: "Panel", detail: "Shows the result in a panel" },
+  { value: "replace", label: "Replace", detail: "Replaces the selection with the result" },
+  { value: "copy", label: "Copy", detail: "Copies the result to the clipboard" },
+  { value: "notify", label: "Notify", detail: "Runs quietly and notifies when done" },
+] as const;
+const PROMPT_OUTPUTS = [
+  { value: "session", label: "Session", detail: "Opens an agent session on the text" },
+  ...OUTPUTS,
+] as const;
+const KINDS = [
+  { value: "prompt", label: "Prompt", icon: Sparkles, hint: "The agent gets the text" },
+  { value: "script", label: "Script", icon: SquareTerminal, hint: "Your command gets the text" },
 ];
-const PROMPT_OUTPUTS = [{ value: "session", label: "Open an agent session" }, ...OUTPUTS];
+const SCRIPT_INPUTS = [
+  { what: "The selected text", names: ["stdin", "PLUCK_TEXT"] },
+  { what: "Where it came from", names: ["PLUCK_APP", "PLUCK_TITLE", "PLUCK_URL"] },
+];
 
 /** The menu's actions, editable here and saved to pluck.toml. */
 export function ActionsTab({
@@ -200,6 +212,10 @@ function ActionDialog({
   const settingsModel = known ? effectiveModel(known, agent, piStart(known)) : {};
   const valid = name.trim() !== "" && body.trim() !== "" && !keyOwner;
 
+  const outputs = kind === "prompt" ? PROMPT_OUTPUTS : OUTPUTS;
+  const output = kind === "prompt" ? promptOutput : scriptOutput;
+  const setOutput = kind === "prompt" ? setPromptOutput : setScriptOutput;
+
   function submit(event: FormEvent) {
     event.preventDefault();
     setChecked(true);
@@ -211,27 +227,34 @@ function ActionDialog({
       key: shownKey.toLowerCase() || null,
       run: kind === "script" ? run.trim() : "",
       agent: kind === "prompt" ? prompt.trim() : null,
-      output: kind === "script" ? scriptOutput : promptOutput,
+      output,
       ...(kind === "prompt" ? model : { model: null, thinking: null }),
     }).then(onClose, (caught: unknown) => setProblem(String(caught)));
   }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit} className="flex flex-col gap-4">
+      <DialogContent className="sm:max-w-xl">
+        <form
+          onSubmit={submit}
+          onKeyDown={(event) =>
+            event.key === "Enter" &&
+            (event.ctrlKey || event.metaKey) &&
+            event.currentTarget.requestSubmit()
+          }
+          className="flex flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>{action ? `Edit ${action.name}` : "New action"}</DialogTitle>
-            <DialogDescription>
-              A prompt sends the text to the agent. A script runs your own command.
-            </DialogDescription>
+            <DialogDescription>How it shows in the menu:</DialogDescription>
+            <MenuPreview
+              name={name.trim()}
+              shortcut={shownKey}
+              agent={kind === "prompt"}
+              output={output}
+            />
           </DialogHeader>
-          <Tabs value={kind} onValueChange={setKind}>
-            <TabsList>
-              <TabsTrigger value="prompt">Prompt</TabsTrigger>
-              <TabsTrigger value="script">Script</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <ChoiceTiles label="Kind" value={kind} options={KINDS} onChange={setKind} />
           <div className="grid grid-cols-4 gap-3">
             <Field className="col-span-3" data-invalid={checked && !name.trim()}>
               <FieldLabel htmlFor="action-name">Name</FieldLabel>
@@ -258,12 +281,14 @@ function ActionDialog({
               {shownKey.toUpperCase()} already runs {keyOwner.name}.
             </FieldError>
           )}
-          {kind === "prompt" ? (
-            <>
-              <Field data-invalid={checked && !prompt.trim()}>
+          {/* Both kinds share one grid cell, so switching keeps the dialog's size. */}
+          <div className="grid">
+            <KindPane shown={kind === "prompt"}>
+              <Field className="flex-1" data-invalid={checked && !prompt.trim()}>
                 <FieldLabel htmlFor="action-prompt">Prompt</FieldLabel>
                 <Textarea
                   id="action-prompt"
+                  className="flex-1"
                   rows={5}
                   placeholder="Give me all the context I need to understand this concept. Use visuals where they help."
                   value={prompt}
@@ -280,37 +305,49 @@ function ActionDialog({
                 fallbackLabel="Settings"
                 onChange={setModel}
               />
-              <ChoiceField
-                id="action-output"
-                label="Output"
-                value={promptOutput}
-                options={PROMPT_OUTPUTS}
-                onChange={(next) => setPromptOutput(next as Action["output"])}
-              />
-            </>
-          ) : (
-            <>
+            </KindPane>
+            <KindPane shown={kind === "script"}>
               <Field data-invalid={checked && !run.trim()}>
                 <FieldLabel htmlFor="action-run">Command</FieldLabel>
-                <Input
+                <CodeInput
                   id="action-run"
                   placeholder="scripts/translate.ps1"
                   value={run}
                   onChange={(event) => setRun(event.target.value)}
                 />
-                <FieldDescription>
-                  Runs in the config folder with the selected text on stdin.
-                </FieldDescription>
+                <FieldDescription>Runs in the config folder.</FieldDescription>
               </Field>
-              <ChoiceField
-                id="action-output"
-                label="Output"
-                value={scriptOutput}
-                options={OUTPUTS}
-                onChange={(next) => setScriptOutput(next as Action["output"])}
-              />
-            </>
-          )}
+              <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 text-muted-foreground">
+                <span className="flex items-center gap-2 font-medium text-foreground">
+                  <Terminal aria-hidden className="size-4 shrink-0" />
+                  Your script gets
+                </span>
+                {SCRIPT_INPUTS.map(({ what, names }) => (
+                  <span key={what} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-36">{what}</span>
+                    {names.map((input) => (
+                      <Badge key={input} variant="outline">
+                        <code>{input}</code>
+                      </Badge>
+                    ))}
+                  </span>
+                ))}
+                <span className="text-xs">What it prints is the result.</span>
+              </div>
+            </KindPane>
+          </div>
+          <Field>
+            <FieldLabel>Output</FieldLabel>
+            <ChoiceTiles
+              label="Output"
+              value={output}
+              options={outputs.map((choice) => ({ ...choice, icon: OUTPUT_ICONS[choice.value] }))}
+              onChange={(next) => setOutput(next as Action["output"])}
+            />
+            <FieldDescription>
+              {outputs.find((choice) => choice.value === output)?.detail}
+            </FieldDescription>
+          </Field>
           {problem && <FieldError>{problem}</FieldError>}
           <DialogFooter>
             {onDelete && (
@@ -328,10 +365,50 @@ function ActionDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit">Save</Button>
+            <Button type="submit" title="Ctrl+Enter">
+              Save
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** One kind's fields. A hidden one keeps its place, so both kinds take the height of the taller. */
+function KindPane({ shown, children }: { shown: boolean; children: ReactNode }) {
+  return (
+    <div
+      inert={!shown}
+      className={cn(
+        "col-start-1 row-start-1 flex flex-col gap-4 transition-opacity",
+        !shown && "invisible opacity-0",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** The action as a row of the menu, updating while it's edited. */
+function MenuPreview({
+  name,
+  shortcut,
+  agent,
+  output,
+}: {
+  name: string;
+  shortcut: string;
+  agent: boolean;
+  output: Action["output"];
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-sm">
+      <ActionIcon action={{ agent: agent ? "prompt" : null, output }} />
+      <span className={cn("flex-1 truncate", !name && "text-muted-foreground")}>
+        {name || "Untitled"}
+      </span>
+      {shortcut && <Kbd>{shortcut.toUpperCase()}</Kbd>}
+    </div>
   );
 }
