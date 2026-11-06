@@ -134,6 +134,19 @@ test("settings.agent-thinking: levels are the ones the model supports", () => {
   expect(gpt4o?.thinkingLevels).toEqual(["off"]);
 });
 
+test("settings.agent-thinking: other harnesses' models are named by id and list their own levels", () => {
+  const codex: PiModel = {
+    id: "gpt-sol",
+    name: "Sol",
+    reasoning: true,
+    thinkingLevels: ["low", "max", "ultra"],
+    thinking: "max",
+  };
+  expect(modelChoices([codex], null)).toEqual([
+    { id: "gpt-sol", name: "Sol", thinkingLevels: ["low", "max", "ultra"], thinking: "max" },
+  ]);
+});
+
 test("settings.agent-thinking: each model shows the level Pi starts it with", () => {
   const settings = { defaultThinkingLevel: "high", modelThinkingLevels: { "openai/gpt-5": "max" } };
   const [sonnet, gpt4o, gpt5] = modelChoices(models, settings);

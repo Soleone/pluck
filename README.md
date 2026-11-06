@@ -12,7 +12,7 @@ Every action is one entry in a config file. An action either runs a command, whi
 
 - **Fast:** the menu opens at the cursor in under 100 ms. Each action has a key, so `Ctrl+Alt+Space`, `E` runs Explain.
 - **Ask anything:** type a question instead of picking an action, and an agent gets it along with the selected text, the app and the page it came from.
-- **Agent sessions:** agent actions open a chat window with the reply streaming in and each web search or tool call shown as a step. Pluck drives [Pi](https://github.com/badlogic/pi-mono), so the models, logins and extensions you already set up just work.
+- **Agent sessions:** agent actions open a chat window with the reply streaming in and each web search or tool call shown as a step. Pluck drives the harness you already use, [Pi](https://github.com/badlogic/pi-mono), Claude Code or Codex, so the models, logins and extensions you set up just work.
 - **Yours:** actions are plain scripts in your config folder. Pluck writes a few samples on first start.
 
 ## Get it

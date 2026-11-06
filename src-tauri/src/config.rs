@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::agent::Harness;
 use std::{fs, io, path::Path};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -199,7 +200,7 @@ pub struct Settings {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettings {
-  pub harness: String,
+  pub harness: Harness,
   pub model: Option<String>,
   pub thinking: Option<String>,
   /// Where new sessions run, inside WSL when the settings say so.
@@ -208,7 +209,7 @@ pub struct AgentSettings {
 
 impl Default for AgentSettings {
   fn default() -> Self {
-    Self { harness: "pi".into(), model: None, thinking: None, folder: "~".into() }
+    Self { harness: Harness::Pi, model: None, thinking: None, folder: "~".into() }
   }
 }
 

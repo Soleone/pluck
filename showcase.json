@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/Soleone/showcase/main/schema/showcase.schema.json",
   "title": "pluck",
   "pitch": "Select text in any app, press a hotkey, and send it to your own scripts or an AI agent from a small menu at the cursor.",
-  "description": "Actions are entries in one TOML file: a command that reads the text on stdin, or a prompt for an agent. Output streams into a panel, lands on the clipboard or replaces the selection. Agent sessions run on Pi.",
+  "description": "Actions are entries in one TOML file: a command that reads the text on stdin, or a prompt for an agent. Output streams into a panel, lands on the clipboard or replaces the selection. Agent sessions run on Pi, Claude Code or Codex.",
   "kind": "desktop-app",
   "stage": "product",
   "year": 2026,
@@ -35,7 +35,7 @@
         "note": "Scripts don't run in the browser; their output is canned."
       },
       {
-        "name": "Pi agent sessions",
+        "name": "Agent sessions",
         "type": "model",
         "seam": "the bridge in src/bridge.ts",
         "standIn": "canned",

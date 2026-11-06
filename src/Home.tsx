@@ -1,5 +1,12 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { bridge, type AgentSettings, type HomeState, type Update } from "@/bridge";
+import {
+  bridge,
+  harnessNames,
+  type AgentSettings,
+  type Harness,
+  type HomeState,
+  type Update,
+} from "@/bridge";
 import { ChoiceField } from "@/ChoiceField";
 import { ActionsTab } from "@/ActionsTab";
 import {
@@ -7,7 +14,7 @@ import {
   effectiveModel,
   loaded as loadedCatalog,
   modelName,
-  piStart,
+  harnessStart,
   type Catalog,
 } from "@/ModelPicker";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
@@ -27,9 +34,13 @@ function errorText(caught: unknown): string {
 /** The window behind the tray icon and the bare hotkey: settings and the menu's actions. */
 export function Home() {
   const [state, setState] = useState<HomeState | null>(null);
-  const [asked, setAsked] = useState<{ wsl: boolean; catalog: Catalog } | null>(null);
+  const [asked, setAsked] = useState<{ wsl: boolean; harness: Harness; catalog: Catalog } | null>(
+    null,
+  );
   const wsl = state?.wsl;
-  const catalog = asked && asked.wsl === wsl ? asked.catalog : "loading";
+  const harness = state?.agent.harness;
+  const catalog =
+    asked && asked.wsl === wsl && asked.harness === harness ? asked.catalog : "loading";
 
   useEffect(() => {
     // pluck.toml may have been edited while the window was in the background.
@@ -39,15 +50,15 @@ export function Home() {
     return () => window.removeEventListener("focus", load);
   }, []);
 
-  // Pi takes a few seconds to start, so ask it once the settings are known. WSL has its own Pi,
-  // with its own models.
+  // The harness takes a few seconds to start, so ask it once the settings are known. WSL has its
+  // own install, with its own models.
   useEffect(() => {
-    if (wsl === undefined) return;
+    if (wsl === undefined || harness === undefined) return;
     bridge.agentCatalog().then(
-      (catalog) => setAsked({ wsl, catalog }),
-      (caught: unknown) => setAsked({ wsl, catalog: { error: errorText(caught) } }),
+      (catalog) => setAsked({ wsl, harness, catalog }),
+      (caught: unknown) => setAsked({ wsl, harness, catalog: { error: errorText(caught) } }),
     );
-  }, [wsl]);
+  }, [wsl, harness]);
 
   if (!state) return null;
 
@@ -235,7 +246,7 @@ function GeneralSetting({
           <FieldContent>
             <FieldLabel htmlFor="wsl">Run in WSL</FieldLabel>
             <FieldDescription>
-              Scripts run in WSL's bash and agents use the Pi installed there, with WSL paths.
+              Scripts run in WSL's bash and agents use the harness installed there, with WSL paths.
             </FieldDescription>
           </FieldContent>
         </Field>
@@ -291,7 +302,8 @@ function AgentSetting({
   }
 
   const loaded = loadedCatalog(catalog);
-  const session = loaded && effectiveModel(loaded, agent, piStart(loaded));
+  const session = loaded && effectiveModel(loaded, agent, harnessStart(loaded));
+  const name = harnessNames[agent.harness];
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-4">
@@ -308,15 +320,18 @@ function AgentSetting({
           id="agent-harness"
           label="Harness"
           value={agent.harness}
-          options={[{ value: "pi", label: "Pi" }]}
-          onChange={() => {}}
+          options={Object.entries(harnessNames).map(([value, label]) => ({ value, label }))}
+          // Models are named differently by each harness, so the choice starts over.
+          onChange={(harness) =>
+            save({ ...agent, harness: harness as Harness, model: null, thinking: null })
+          }
         />
         <div className="col-span-4">
           <ModelPicker
             catalog={catalog}
             value={agent}
-            fallback={loaded ? piStart(loaded) : {}}
-            fallbackLabel="Pi default"
+            fallback={loaded ? harnessStart(loaded) : {}}
+            fallbackLabel={`${name} default`}
             onChange={(model) => save({ ...agent, ...model })}
           />
         </div>
@@ -349,7 +364,9 @@ function AgentSetting({
           Where new sessions work, like ~/src{wsl && " inside WSL"}.
         </FieldDescription>
       </Field>
-      {catalog === "loading" && <p className="text-muted-foreground">Asking Pi for its models…</p>}
+      {catalog === "loading" && (
+        <p className="text-muted-foreground">Asking {name} for its models…</p>
+      )}
       {loaded && session?.model && (
         <p className="text-muted-foreground">
           New sessions use {modelName(loaded, session.model)}

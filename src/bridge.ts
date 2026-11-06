@@ -19,9 +19,17 @@ export type Action = {
 /** For a new session; unset ones fall back to the agent settings. */
 export type SessionModel = { model: string | null; thinking: string | null };
 
+export type Harness = "pi" | "claude" | "codex";
+
+export const harnessNames: Record<Harness, string> = {
+  pi: "Pi",
+  claude: "Claude Code",
+  codex: "Codex",
+};
+
 /** Unset model and thinking use the harness's own defaults. */
 export type AgentSettings = {
-  harness: "pi";
+  harness: Harness;
   /** Where new sessions run, inside WSL when the settings say so. */
   folder: string;
 } & SessionModel;
@@ -31,6 +39,7 @@ export type AgentSession = {
   title: string;
   folder: string;
   wsl: boolean;
+  harness: Harness;
   /** When it last finished a run, in ms since 1970; 0 when unknown. */
   lastActive: number;
 };
@@ -41,11 +50,12 @@ type AgentEvent = { id: string; record: PiRecord | null; exited: string | null }
 /** The menu asking the agents window to send a prompt, to `session` or else a new session. */
 type AgentRequest = { title: string; prompt: string; session: string | null } & SessionModel;
 
-/** `start` is the model, as `provider/id`, and thinking level Pi starts a new session with. */
+/** `settings` are Pi's own. `start` is the model, as `provider/id` for Pi, and thinking level the
+ * harness starts a new session with. */
 export type AgentCatalog = {
   models: PiModel[];
   settings: PiSettings | null;
-  start: { model: string; thinking: string } | null;
+  start: { model: string; thinking?: string } | null;
 };
 
 /** What the menu shows for one trigger. */
@@ -167,7 +177,7 @@ const native: Bridge = {
   agentCatalog: () => invoke("agent_models"),
   agentSessions: () => invoke("agent_sessions"),
   agentStart: (id, title, model) => invoke("agent_start", { id, title, ...model }),
-  agentSend: (id, record) => invoke("agent_send", { id, record: JSON.stringify(record) }),
+  agentSend: (id, record) => invoke("agent_send", { id, record }),
   agentRemove: (id) => invoke("agent_remove", { id }),
   onAgent: (listener) => subscribe("pluck://agent", listener),
   onAgentRequest: (listener) => subscribe("pluck://agent-request", listener),
@@ -310,6 +320,7 @@ function prototype(): Bridge {
       title: "Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.",
       folder: "~",
       wsl: false,
+      harness: "pi",
       lastActive: Date.now() - 3 * 60_000,
     },
   ];
@@ -406,7 +417,14 @@ function prototype(): Bridge {
     agentSessions: async () => [...sessions],
     async agentStart(id, title) {
       if (!sessions.some((session) => session.id === id))
-        sessions.unshift({ id, title, folder: agent.folder, wsl, lastActive: Date.now() });
+        sessions.unshift({
+          id,
+          title,
+          folder: agent.folder,
+          wsl,
+          harness: agent.harness,
+          lastActive: Date.now(),
+        });
     },
     async agentRemove(id) {
       sessions = sessions.filter((session) => session.id !== id);

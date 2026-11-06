@@ -1,6 +1,7 @@
 import { piStep, type AgentMessage, type AgentTool } from "@/components/soleone/agent";
 
-/** Pi's RPC records and messages, reduced to the fields pluck reads. See Pi's docs/rpc.md. */
+/** Pi's RPC records and messages, reduced to the fields pluck reads. See Pi's docs/rpc.md. Every
+ * harness speaks them with pluck: the backend translates Claude Code's and Codex's own. */
 type Part =
   | { type: "text"; text: string }
   | { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
@@ -40,12 +41,16 @@ export type PiRecord = {
   method?: string;
 };
 
+/** Pi names a model `provider/id`; other harnesses have no provider and list their own levels. */
 export type PiModel = {
   id: string;
   name: string;
-  provider: string;
+  provider?: string;
   reasoning: boolean;
   thinkingLevelMap?: Record<string, string | null> | null;
+  thinkingLevels?: string[];
+  /** The level the harness starts this model with, when it says. */
+  thinking?: string;
 };
 
 export type PiSettings = {
@@ -189,6 +194,8 @@ function toolOf(
 }
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+/** Pi's levels and the ones other harnesses go up to, like Codex's ultra, lowest first. */
+const levelOrder = [...thinkingLevels, "ultra"];
 
 /** `thinking` is the level Pi starts the model with when pluck names no level. */
 export type ModelChoice = { id: string; name: string; thinkingLevels: string[]; thinking: string };
@@ -213,14 +220,19 @@ export function modelChoices(models: PiModel[], settings: PiSettings | null): Mo
         ),
     )
     .map((model) => {
-      const id = `${model.provider}/${model.id}`;
-      const supported = model.reasoning
-        ? thinkingLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
-        : ["off"];
+      const id = model.provider ? `${model.provider}/${model.id}` : model.id;
+      const supported =
+        model.thinkingLevels ??
+        (model.reasoning
+          ? thinkingLevels.filter((level) => model.thinkingLevelMap?.[level] !== null)
+          : ["off"]);
       const wanted =
-        settings?.modelThinkingLevels?.[id] ?? settings?.defaultThinkingLevel ?? "medium";
+        settings?.modelThinkingLevels?.[id] ??
+        model.thinking ??
+        settings?.defaultThinkingLevel ??
+        "medium";
       const below = supported.filter(
-        (level) => thinkingLevels.indexOf(level) <= thinkingLevels.indexOf(wanted),
+        (level) => levelOrder.indexOf(level) <= levelOrder.indexOf(wanted),
       );
       return { id, name: model.name, thinkingLevels: supported, thinking: below.at(-1) ?? "off" };
     });

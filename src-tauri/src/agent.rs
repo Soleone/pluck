@@ -1,5 +1,10 @@
-//! Agent sessions. Each one runs the installed harness (Pi) in RPC mode as its own process; pluck
-//! passes its JSON records through to the agents window and keeps a list of the sessions it started.
+//! Agent sessions. Each one runs an installed harness (Pi, Claude Code or Codex) as its own process.
+//! Pluck speaks Pi's RPC records with the agents window; Pi takes them as they are, and the other
+//! harnesses' adapters translate both ways. Pluck keeps a list of the sessions it started.
+
+mod claude;
+mod codex;
+mod pi;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,22 +14,144 @@ use std::{
   io::{self, BufRead, BufReader, Read, Write},
   path::{Path, PathBuf},
   process::{Child, ChildStdin, Command, Stdio},
-  sync::Mutex,
+  sync::{Arc, Mutex},
   thread,
   time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager};
 
 const SESSIONS: &str = "agents.json";
-/// For a shell: `$0` is the working folder, the rest are Pi's arguments. A login shell puts Pi on the PATH.
-const LAUNCH: &str = r#"cd "${0/#\~/$HOME}" && exec pi --mode rpc "$@""#;
+/// For a shell: `$0` is the working folder, the rest the harness and its arguments. A login shell
+/// puts the harness on the PATH.
+const LAUNCH: &str = r#"cd "${0/#\~/$HOME}" && exec "$@""#;
 
 /// Session threads and commands both write the session list.
 static SESSIONS_FILE: Mutex<()> = Mutex::new(());
 
-/// The stdin of every running session, by session id.
+#[derive(Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Harness {
+  #[default]
+  Pi,
+  Claude,
+  Codex,
+}
+
+impl Harness {
+  pub fn name(self) -> &'static str {
+    match self {
+      Harness::Pi => "Pi",
+      Harness::Claude => "Claude Code",
+      Harness::Codex => "Codex",
+    }
+  }
+
+  fn program(self) -> &'static str {
+    match self {
+      Harness::Pi => "pi",
+      Harness::Claude => "claude",
+      Harness::Codex => "codex",
+    }
+  }
+}
+
+/// The model and thinking level a new session or reply runs with; unset ones are left to the harness.
 #[derive(Default)]
-pub struct Agents(Mutex<HashMap<String, ChildStdin>>);
+pub struct Model {
+  pub model: Option<String>,
+  pub thinking: Option<String>,
+}
+
+impl Model {
+  /// `--model` and the harness's flag for the thinking level, for the ones that are set.
+  fn flags(&self, thinking: &str) -> Vec<String> {
+    let model = self.model.iter().flat_map(|model| ["--model".to_string(), model.clone()]);
+    model.chain(self.thinking.iter().flat_map(|level| [thinking.to_string(), level.clone()])).collect()
+  }
+}
+
+/// What a harness process is for.
+pub enum Kind<'a> {
+  New(&'a str, &'a Model),
+  Resume(&'a AgentSession),
+  /// One reply that isn't kept.
+  Reply(&'a Model),
+}
+
+/// Translates between Pi's records and the harness's own.
+enum Adapter {
+  Pi,
+  Claude(claude::Adapter),
+  Codex(codex::Adapter),
+}
+
+/// What an adapter makes of one record: records for pluck, lines for the harness, and the
+/// harness's own id for the session once it has one.
+#[derive(Default)]
+struct Out {
+  emit: Vec<Value>,
+  write: Vec<Value>,
+  thread: Option<String>,
+}
+
+impl Adapter {
+  /// The adapter, the harness's arguments and what to send it first.
+  fn open(harness: Harness, kind: &Kind, wsl: bool) -> (Adapter, Vec<String>, Vec<Value>) {
+    match harness {
+      Harness::Pi => (Adapter::Pi, pi::args(kind), Vec::new()),
+      Harness::Claude => {
+        let (adapter, args) = claude::Adapter::open(kind, wsl);
+        (Adapter::Claude(adapter), args, Vec::new())
+      }
+      Harness::Codex => {
+        let (adapter, writes) = codex::Adapter::open(kind);
+        (Adapter::Codex(adapter), vec!["app-server".into()], writes)
+      }
+    }
+  }
+
+  /// A command from pluck.
+  fn command(&mut self, record: Value) -> Out {
+    match self {
+      Adapter::Pi => Out { write: vec![record], ..Out::default() },
+      Adapter::Claude(adapter) => adapter.command(record),
+      Adapter::Codex(adapter) => adapter.command(record),
+    }
+  }
+
+  /// A record from the harness.
+  fn record(&mut self, record: Value) -> Out {
+    match self {
+      Adapter::Pi => Out { emit: vec![record], ..Out::default() },
+      Adapter::Claude(adapter) => adapter.record(record),
+      Adapter::Codex(adapter) => adapter.record(record),
+    }
+  }
+}
+
+/// A running session: its stdin, which closing asks the harness to shut down, and its adapter.
+struct Pipe {
+  stdin: Option<ChildStdin>,
+  adapter: Adapter,
+}
+
+impl Pipe {
+  fn write(&mut self, records: &[Value]) -> io::Result<()> {
+    write(&mut self.stdin, records)
+  }
+}
+
+fn write(stdin: &mut Option<ChildStdin>, records: &[Value]) -> io::Result<()> {
+  let stdin = stdin.as_mut().ok_or(io::ErrorKind::BrokenPipe)?;
+  for record in records {
+    writeln!(stdin, "{record}")?;
+  }
+  stdin.flush()
+}
+
+/// Every running session, by session id.
+#[derive(Default)]
+pub struct Agents(Mutex<HashMap<String, Arc<Mutex<Pipe>>>>);
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +160,11 @@ pub struct AgentSession {
   pub title: String,
   pub folder: String,
   pub wsl: bool,
+  #[serde(default)]
+  pub harness: Harness,
+  /// The harness's own id for the session, when it picks one (Codex).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub thread: Option<String>,
   /// When the session last finished a run, in milliseconds since 1970. The model provider's prompt
   /// cache expires a few minutes after that, which makes continuing an older session cost more.
   #[serde(default)]
@@ -71,79 +203,121 @@ pub fn now() -> u64 {
   SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |time| time.as_millis() as u64)
 }
 
+fn emit(app: &AppHandle, id: &str, record: Option<Value>, exited: Option<String>) {
+  let _ = app.emit("pluck://agent", AgentEvent { id: id.to_string(), record, exited });
+}
+
 /// Starts the session's process unless it is already running, and streams its records as `pluck://agent`.
-/// Each finished run updates the session's `last_active` in `dir`.
-pub fn start(app: &AppHandle, agents: &Agents, dir: &Path, session: &AgentSession, args: &[String]) -> io::Result<()> {
+/// `model` is set for a session that is new. Each finished run updates the session's `last_active` in `dir`.
+pub fn start(app: &AppHandle, agents: &Agents, dir: &Path, session: &AgentSession, model: Option<&Model>) -> io::Result<()> {
   let mut running = agents.0.lock().unwrap();
   if running.contains_key(&session.id) {
     return Ok(());
   }
-  let mut child = spawn(&session.folder, session.wsl, &[&["--session-id".to_string(), session.id.clone()], args].concat())?;
-  running.insert(session.id.clone(), child.stdin.take().expect("stdin is piped"));
+  let kind = match model {
+    Some(model) => Kind::New(&session.id, model),
+    None => Kind::Resume(session),
+  };
+  let (adapter, args, first) = Adapter::open(session.harness, &kind, session.wsl);
+  let mut child = spawn(session.harness, &session.folder, session.wsl, &args)?;
+  let pipe = Arc::new(Mutex::new(Pipe { stdin: child.stdin.take(), adapter }));
+  pipe.lock().unwrap().write(&first)?;
+  running.insert(session.id.clone(), pipe.clone());
 
   let app = app.clone();
   let dir = dir.to_path_buf();
-  let id = session.id.clone();
+  let (id, harness) = (session.id.clone(), session.harness);
   thread::spawn(move || {
-    let emit = |record, exited| {
-      let _ = app.emit("pluck://agent", AgentEvent { id: id.clone(), record, exited });
-    };
-    let reason = read_records(&mut child, |record| {
-      if record["type"] == "agent_settled" {
+    let reason = read_records(harness, &mut child, |record| {
+      let out = {
+        let mut pipe = pipe.lock().unwrap();
+        let out = pipe.adapter.record(record);
+        let _ = pipe.write(&out.write);
+        out
+      };
+      if let Some(thread) = out.thread {
         let _ = update_sessions(&dir, |sessions| {
-          sessions.iter_mut().filter(|session| session.id == id).for_each(|session| session.last_active = now());
+          sessions.iter_mut().filter(|session| session.id == id).for_each(|session| session.thread = Some(thread.clone()));
         });
       }
-      emit(Some(record), None)
+      for record in out.emit {
+        if record["type"] == "agent_settled" {
+          let _ = update_sessions(&dir, |sessions| {
+            sessions.iter_mut().filter(|session| session.id == id).for_each(|session| session.last_active = now());
+          });
+        }
+        emit(&app, &id, Some(record), None);
+      }
     });
     app.state::<Agents>().0.lock().unwrap().remove(&id);
-    emit(None, Some(reason));
+    emit(&app, &id, None, Some(reason));
   });
   Ok(())
 }
 
-/// Ends the session's process, if it runs, and takes it off the list. Pi keeps its own copy.
+/// Ends the session's process, if it runs, and takes it off the list. The harness keeps its own copy.
 pub fn remove(agents: &Agents, dir: &Path, id: &str) -> io::Result<()> {
-  // Without stdin Pi shuts down.
-  agents.0.lock().unwrap().remove(id);
+  if let Some(pipe) = agents.0.lock().unwrap().remove(id) {
+    pipe.lock().unwrap().stdin = None;
+  }
   update_sessions(dir, |sessions| sessions.retain(|session| session.id != id))
 }
 
-/// Writes one command record to a running session.
-pub fn send(agents: &Agents, id: &str, record: &str) -> Result<(), String> {
-  let mut running = agents.0.lock().unwrap();
-  let stdin = running.get_mut(id).ok_or("This session isn't running")?;
-  writeln!(stdin, "{record}").and_then(|()| stdin.flush()).map_err(|error| error.to_string())
+/// Sends one command record to a running session.
+pub fn send(app: &AppHandle, agents: &Agents, id: &str, record: Value) -> Result<(), String> {
+  let pipe = agents.0.lock().unwrap().get(id).cloned().ok_or("This session isn't running")?;
+  let out = {
+    let mut pipe = pipe.lock().unwrap();
+    let out = pipe.adapter.command(record);
+    pipe.write(&out.write).map_err(|error| error.to_string())?;
+    out
+  };
+  for record in out.emit {
+    emit(app, id, Some(record), None);
+  }
+  Ok(())
 }
 
-/// Sends `prompt` to a short-lived session that isn't saved and passes on its reply's text as it
-/// streams in. Returns once Pi has finished, with Pi's error when the run failed.
-pub fn reply(folder: &str, wsl: bool, args: &[String], prompt: &str, mut on_text: impl FnMut(String)) -> Result<(), String> {
-  let mut child = spawn(folder, wsl, &[&["--no-session".to_string()], args].concat()).map_err(|error| error.to_string())?;
+/// Sends `prompt` to a short-lived process that keeps no session and passes on its reply's text as
+/// it streams in. Returns once the harness has finished, with its error when the run failed.
+pub fn reply(harness: Harness, folder: &str, wsl: bool, model: &Model, prompt: &str, mut on_text: impl FnMut(String)) -> Result<(), String> {
+  let (mut adapter, args, first) = Adapter::open(harness, &Kind::Reply(model), wsl);
+  let mut child = spawn(harness, folder, wsl, &args).map_err(|error| error.to_string())?;
   let mut stdin = child.stdin.take();
-  let ask = stdin.as_mut().expect("stdin is piped");
-  writeln!(ask, "{}", serde_json::json!({ "type": "prompt", "message": prompt })).map_err(|error| error.to_string())?;
+  let asked = adapter.command(serde_json::json!({ "type": "prompt", "message": prompt }));
+  write(&mut stdin, &[first, asked.write].concat()).map_err(|error| error.to_string())?;
   let (mut settled, mut failure) = (false, None);
-  let reason = read_records(&mut child, |record| match record["type"].as_str() {
-    Some("message_update") => {
-      let event = &record["assistantMessageEvent"];
-      if event["type"] == "text_delta" {
-        on_text(event["delta"].as_str().unwrap_or("").to_string());
+  let reason = read_records(harness, &mut child, |record| {
+    let out = adapter.record(record);
+    let mut answers = out.write;
+    for record in out.emit {
+      match record["type"].as_str() {
+        Some("message_update") => {
+          let event = &record["assistantMessageEvent"];
+          if event["type"] == "text_delta" {
+            on_text(event["delta"].as_str().unwrap_or("").to_string());
+          }
+        }
+        // Errors like "Connection error." don't say which model failed.
+        Some("message_end") if record["message"]["stopReason"] == "error" => {
+          let message = &record["message"];
+          let text = message["errorMessage"].as_str().unwrap_or("The agent failed");
+          failure = Some(format!("{text} ({}/{})", message["provider"].as_str().unwrap_or(""), message["model"].as_str().unwrap_or("")));
+        }
+        Some("response") if record["success"] == false => failure = record["error"].as_str().map(String::from),
+        // Nobody is there to answer, so questions are cancelled.
+        Some("extension_ui_request") if record["method"] != "notify" => {
+          let cancel = serde_json::json!({ "type": "extension_ui_response", "id": record["id"], "cancelled": true });
+          answers.extend(adapter.command(cancel).write);
+        }
+        Some("agent_settled") => settled = true,
+        _ => {}
       }
     }
-    // Pi's errors, like "Connection error.", don't say which model failed.
-    Some("message_end") if record["message"]["stopReason"] == "error" => {
-      let message = &record["message"];
-      let text = message["errorMessage"].as_str().unwrap_or("Pi failed");
-      failure = Some(format!("{text} ({}/{})", message["provider"].as_str().unwrap_or(""), message["model"].as_str().unwrap_or("")));
-    }
-    Some("response") if record["success"] == false => failure = record["error"].as_str().map(String::from),
-    Some("agent_settled") => {
-      settled = true;
-      // Closing stdin asks Pi to shut down.
+    let _ = write(&mut stdin, &answers);
+    if settled {
       stdin = None;
     }
-    _ => {}
   });
   match failure {
     Some(failure) => Err(failure),
@@ -152,65 +326,14 @@ pub fn reply(folder: &str, wsl: bool, args: &[String], prompt: &str, mut on_text
   }
 }
 
-/// Pi's arguments for a model and thinking level; unset ones are left to Pi.
-pub fn pi_args(model: Option<&str>, thinking: Option<&str>) -> Vec<String> {
-  let model = model.into_iter().flat_map(|model| ["--model", model]);
-  let thinking = thinking.into_iter().flat_map(|level| ["--thinking", level]);
-  model.chain(thinking).map(String::from).collect()
-}
-
-/// The models Pi can use, Pi's settings, which hold the user's model scope and per-model thinking
-/// levels, and the model and thinking level a new session starts with, asked from a short-lived process.
-pub fn models(folder: &str, wsl: bool) -> Result<Value, String> {
-  // Pi's settings live where Pi runs; only a shell there can read them.
-  let by_shell = wsl || cfg!(not(windows));
-  let mut child = spawn(folder, wsl, &["--no-session".into()]).map_err(|error| error.to_string())?;
-  let mut stdin = child.stdin.take();
-  let ask = stdin.as_mut().expect("stdin is piped");
-  let mut commands = vec![
-    serde_json::json!({ "id": "models", "type": "get_available_models" }),
-    serde_json::json!({ "id": "state", "type": "get_state" }),
-  ];
-  if by_shell {
-    let settings = r#"cat "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json""#;
-    commands.push(serde_json::json!({ "id": "settings", "type": "bash", "command": settings, "excludeFromContext": true }));
+/// The models the harness offers, as the agents window reads them: `models` in Pi's shape,
+/// Pi's `settings`, and the model and thinking level a new session `start`s with.
+pub fn models(harness: Harness, folder: &str, wsl: bool) -> Result<Value, String> {
+  match harness {
+    Harness::Pi => pi::models(folder, wsl),
+    Harness::Claude => claude::models(folder, wsl),
+    Harness::Codex => codex::models(folder, wsl),
   }
-  for command in commands {
-    writeln!(ask, "{command}").map_err(|error| error.to_string())?;
-  }
-  let (mut models, mut state, mut settings) = (None, None, None);
-  let reason = read_records(&mut child, |record| {
-    if record["type"] != "response" {
-      return;
-    }
-    match record["id"].as_str() {
-      Some("models") => models = Some(record),
-      Some("state") => state = Some(record),
-      Some("settings") => settings = Some(record),
-      _ => return,
-    }
-    if models.is_some() && state.is_some() && (settings.is_some() || !by_shell) {
-      // Closing stdin asks Pi to shut down.
-      stdin = None;
-    }
-  });
-  let models = models.ok_or(reason)?;
-  if models["success"] != true {
-    return Err(models["error"].as_str().unwrap_or("Pi couldn't list its models").to_string());
-  }
-  let text = match settings {
-    Some(record) => record["data"]["output"].as_str().map(String::from),
-    None if !by_shell => fs::read_to_string(pi_dir().join("settings.json")).ok(),
-    None => None,
-  };
-  // Missing or unreadable settings just mean Pi's defaults.
-  let settings = text.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or(Value::Null);
-  // Pi picks its starting model from the scope, the saved default or what has a key, so ask it.
-  let start = state.map(|record| record["data"].clone()).filter(|data| data["model"].is_object()).map(|data| {
-    let model = &data["model"];
-    serde_json::json!({ "model": format!("{}/{}", model["provider"].as_str().unwrap_or(""), model["id"].as_str().unwrap_or("")), "thinking": data["thinkingLevel"] })
-  });
-  Ok(serde_json::json!({ "models": models["data"]["models"], "settings": settings, "start": start }))
 }
 
 /// How WSL names a folder Windows picked: `\\wsl.localhost\Ubuntu\home\me` is `/home/me` and
@@ -227,22 +350,40 @@ pub fn wsl_path(path: &str) -> String {
   }
 }
 
-fn pi_dir() -> PathBuf {
-  env::var_os("PI_CODING_AGENT_DIR").map(PathBuf::from).unwrap_or_else(|| home().join(".pi").join("agent"))
-}
-
 fn home() -> PathBuf {
   env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_default()
 }
 
-fn spawn(folder: &str, wsl: bool, args: &[String]) -> io::Result<Child> {
+/// The harness's config folder: `variable` when it is set, else `default` in the home folder.
+fn config_folder(variable: &str, default: &str) -> PathBuf {
+  env::var_os(variable).map(PathBuf::from).unwrap_or_else(|| home().join(default))
+}
+
+/// Runs `script` in WSL's login shell with `arg` as `$0` and returns its output; for reading a
+/// harness's files there.
+#[cfg(windows)]
+fn wsl_output(script: &str, arg: &str) -> Result<String, String> {
+  use std::os::windows::process::CommandExt;
+  const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+  let output = Command::new("wsl.exe")
+    .args(["-e", "bash", "-lc", script, arg])
+    .creation_flags(CREATE_NO_WINDOW)
+    .output()
+    .map_err(|error| error.to_string())?;
+  match output.status.success() {
+    true => Ok(String::from_utf8_lossy(&output.stdout).into_owned()),
+    false => Err(String::from_utf8_lossy(&output.stderr).trim().to_string()),
+  }
+}
+
+fn spawn(harness: Harness, folder: &str, wsl: bool, args: &[String]) -> io::Result<Child> {
   let mut command = launcher(folder, wsl);
-  command.args(args);
+  command.arg(harness.program()).args(args);
   command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
   command.spawn()
 }
 
-/// On Windows Pi runs either inside WSL or natively, as the settings say.
+/// On Windows the harness runs either inside WSL or natively, as the settings say.
 #[cfg(windows)]
 fn launcher(folder: &str, wsl: bool) -> Command {
   use std::os::windows::process::CommandExt;
@@ -252,9 +393,9 @@ fn launcher(folder: &str, wsl: bool) -> Command {
     command.args(["-e", "bash", "-lc", LAUNCH, folder]);
     command
   } else {
-    // npm and pnpm install Pi as a .cmd script, which only cmd runs.
+    // npm and pnpm install harnesses as .cmd scripts, which only cmd runs.
     let mut command = Command::new("cmd");
-    command.args(["/C", "pi", "--mode", "rpc"]);
+    command.arg("/C");
     let folder = match folder.strip_prefix('~') {
       Some(rest) => home().join(rest.trim_start_matches(['/', '\\'])),
       None => PathBuf::from(folder),
@@ -275,7 +416,7 @@ fn launcher(folder: &str, _wsl: bool) -> Command {
 
 /// Calls `on_record` for each JSON line of stdout until the process ends, then says why it ended.
 /// Other lines, such as a shell profile's greeting, are skipped.
-fn read_records(child: &mut Child, mut on_record: impl FnMut(Value)) -> String {
+fn read_records(harness: Harness, child: &mut Child, mut on_record: impl FnMut(Value)) -> String {
   let mut stderr = child.stderr.take().expect("stderr is piped");
   let errors = thread::spawn(move || {
     let mut text = String::new();
@@ -294,9 +435,38 @@ fn read_records(child: &mut Child, mut on_record: impl FnMut(Value)) -> String {
   let status = child.wait();
   let stderr = errors.join().unwrap_or_default();
   match status {
-    Ok(status) if status.success() => "Pi stopped".into(),
-    _ => stderr.lines().rev().find(|line| !line.trim().is_empty()).unwrap_or("Pi couldn't start").to_string(),
+    Ok(status) if status.success() => format!("{} stopped", harness.name()),
+    _ => stderr.lines().rev().find(|line| !line.trim().is_empty()).map_or_else(|| format!("{} couldn't start", harness.name()), String::from),
   }
+}
+
+/// Pi's text part.
+fn text(text: &str) -> Value {
+  serde_json::json!({ "type": "text", "text": text })
+}
+
+/// A Pi message that is complete: added and finished at once.
+fn whole(message: Value) -> [Value; 2] {
+  [serde_json::json!({ "type": "message_start", "message": message }), serde_json::json!({ "type": "message_end", "message": message })]
+}
+
+/// A Pi stream event for the reply being written.
+fn update(event: Value) -> Value {
+  serde_json::json!({ "type": "message_update", "assistantMessageEvent": event })
+}
+
+/// Pi's answer to a command.
+fn response(command: &str, data: Value) -> Value {
+  serde_json::json!({ "type": "response", "command": command, "success": true, "data": data })
+}
+
+fn failed(command: &str, error: &str) -> Value {
+  serde_json::json!({ "type": "response", "command": command, "success": false, "error": error })
+}
+
+/// A yes or no question, as Pi's extensions ask it.
+fn confirm(id: &str, title: &str, message: &str) -> Value {
+  serde_json::json!({ "type": "extension_ui_request", "id": id, "method": "confirm", "title": title, "message": message })
 }
 
 #[cfg(test)]

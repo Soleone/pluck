@@ -5,17 +5,17 @@ import { AgentModelFields, type AgentModelChoice } from "@/components/soleone/ag
 const DEFAULT = "default";
 const NO_MODELS: AgentCatalog = { models: [], settings: null, start: null };
 
-/** Pi's models, while asked for, or why it couldn't list them. */
+/** The harness's models, while asked for, or why it couldn't list them. */
 export type Catalog = AgentCatalog | "loading" | { error: string };
 
 export const loaded = (catalog: Catalog) =>
   catalog !== "loading" && !("error" in catalog) ? catalog : null;
 
-/** The model and thinking level as far as known: unset ones are what Pi starts a session with. */
+/** The model and thinking level as far as known: unset ones are what the harness starts a session with. */
 type Effective = { model?: string; thinking?: string };
 
 /** What a session with `value` runs with, when unset ones mean `fallback`. A model picked without a
- * level runs with the level Pi gives that model. */
+ * level runs with the level the harness gives that model. */
 export function effectiveModel(
   catalog: AgentCatalog,
   value: SessionModel,
@@ -28,8 +28,8 @@ export function effectiveModel(
   return { model: value.model, thinking: value.thinking ?? choice?.thinking };
 }
 
-/** What Pi starts a session with when pluck names no model or level. */
-export const piStart = (catalog: AgentCatalog): Effective => ({
+/** What the harness starts a session with when pluck names no model or level. */
+export const harnessStart = (catalog: AgentCatalog): Effective => ({
   model: catalog.start?.model,
   thinking: catalog.start?.thinking,
 });
@@ -43,7 +43,7 @@ export function modelName(catalog: AgentCatalog, id: string) {
 /**
  * Model and thinking level for sessions. The first choice leaves the model unset, which means
  * `fallback`, named by `fallbackLabel`; a model's marked level leaves the level unset. Disabled
- * until Pi has listed its models.
+ * until the harness has listed its models.
  */
 export function ModelPicker({
   catalog,
@@ -72,10 +72,10 @@ export function ModelPicker({
     },
     ...choices.map((choice) => ({
       ...choice,
-      label: `${choice.name} · ${choice.id.split("/")[0]}`,
+      label: choice.id.includes("/") ? `${choice.name} · ${choice.id.split("/")[0]}` : choice.name,
     })),
   ];
-  // A model Pi no longer offers, kept from pluck.toml or the settings.
+  // A model the harness no longer offers, kept from pluck.toml or the settings.
   if (value.model && !levelsOf(value.model))
     models.push({
       id: value.model,

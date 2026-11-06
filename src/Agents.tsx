@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, PanelLeft, Plus, X } from "lucide-react";
 import { AgentDialog, type DialogAnswer } from "@/AgentDialog";
 import { ago } from "@/agent/ago";
-import { bridge, type AgentSession, type SessionModel } from "@/bridge";
+import { bridge, harnessNames, type AgentSession, type Harness, type SessionModel } from "@/bridge";
 import {
   agentMessages,
   applyRecord,
@@ -39,11 +39,20 @@ export function Agents() {
   const running = useRef(new Set<string>());
   /** Hidden at first, so a new session has the window to itself. */
   const [sessionsShown, setSessionsShown] = useState(false);
-  /** Questions from Pi's extensions, oldest first, with the session that asks. */
+  /** Questions from the harness, oldest first, with the session that asks. */
   const [dialogs, setDialogs] = useState<{ id: string; dialog: PiDialog }[]>([]);
+
+  /** What new sessions run, from the settings, which may change while the window is open. */
+  const [harness, setHarness] = useState<Harness>("pi");
 
   const loadSessions = () => void bridge.agentSessions().then(setSessions);
   useEffect(loadSessions, []);
+  useEffect(() => {
+    const load = () => void bridge.homeState().then((state) => setHarness(state.agent.harness));
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, []);
   useEffect(
     () =>
       bridge.onAgent(({ id, record, exited }) => {
@@ -225,7 +234,7 @@ export function Agents() {
             busy={transcript.busy}
             model={transcript.model}
             error={error ?? transcript.error}
-            placeholder="Ask Pi"
+            placeholder={`Ask ${harnessNames[current?.harness ?? harness]}`}
             emptyTitle={selected ? "Loading the session" : "New session"}
             emptyDescription={
               selected
@@ -243,7 +252,7 @@ export function Agents() {
         <AgentDialog
           key={asked.dialog.id}
           dialog={asked.dialog}
-          session={sessions.find((session) => session.id === asked.id)?.title ?? "Pi"}
+          session={sessions.find((session) => session.id === asked.id)?.title ?? "the agent"}
           onAnswer={(reply) => answer(asked.id, asked.dialog, reply)}
         />
       )}

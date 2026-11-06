@@ -3,7 +3,7 @@ mod agent;
 mod config;
 mod grab;
 
-use agent::{AgentSession, Agents};
+use agent::{AgentSession, Agents, Model};
 use config::{Action, AgentSettings, Output};
 use grab::Target;
 use serde::Serialize;
@@ -340,17 +340,16 @@ fn agent_request(title: String, prompt: String, opened: &Opened, continue_sessio
 /// Runs a prompt action that doesn't open a session: one reply from the agent.
 fn one_off(app: &AppHandle, action: &Action, prompt: &str, on_text: impl FnMut(String)) -> Result<(), String> {
   let settings = config::settings(&config_dir(app));
-  let (model, thinking) = session_model(action.model.clone(), action.thinking.clone(), &settings.agent);
-  let args = agent::pi_args(model.as_deref(), thinking.as_deref());
-  agent::reply(&settings.agent.folder, settings.wsl, &args, prompt, on_text)
+  let model = session_model(action.model.clone(), action.thinking.clone(), &settings.agent);
+  agent::reply(settings.agent.harness, &settings.agent.folder, settings.wsl, &model, prompt, on_text)
 }
 
 /// The model and thinking level a new session runs with: the ones given, else the agent settings'.
-/// A model given without a level leaves the level to Pi, since it may not support the settings' one.
-fn session_model(model: Option<String>, thinking: Option<String>, agent: &AgentSettings) -> (Option<String>, Option<String>) {
+/// A model given without a level leaves the level to the harness, since it may not support the settings' one.
+fn session_model(model: Option<String>, thinking: Option<String>, agent: &AgentSettings) -> Model {
   match model {
-    Some(model) => (Some(model), thinking),
-    None => (agent.model.clone(), thinking.or_else(|| agent.thinking.clone())),
+    Some(model) => Model { model: Some(model), thinking },
+    None => Model { model: agent.model.clone(), thinking: thinking.or_else(|| agent.thinking.clone()) },
   }
 }
 
@@ -478,11 +477,11 @@ fn set_agent_settings(app: AppHandle, agent: AgentSettings) -> Result<(), String
   config::save_settings(&dir, &settings).map_err(|error| format!("Couldn't save the agent settings: {error}"))
 }
 
-/// Blocks for a few seconds while Pi starts, so it runs off the main thread.
+/// Blocks for a few seconds while the harness starts, so it runs off the main thread.
 #[tauri::command]
 async fn agent_models(app: AppHandle) -> Result<serde_json::Value, String> {
   let settings = config::settings(&config_dir(&app));
-  agent::models(&settings.agent.folder, settings.wsl)
+  agent::models(settings.agent.harness, &settings.agent.folder, settings.wsl)
 }
 
 #[tauri::command]
@@ -502,30 +501,26 @@ fn agent_start(
   thinking: Option<String>,
 ) -> Result<(), String> {
   let dir = config_dir(&app);
-  let mut args = Vec::new();
-  let session = match agent::sessions(&dir).into_iter().find(|session| session.id == id) {
-    Some(session) => session,
+  let (session, model) = match agent::sessions(&dir).into_iter().find(|session| session.id == id) {
+    Some(session) => (session, None),
     None => {
       let settings = config::settings(&dir);
       let agent = settings.agent;
-      if agent.harness != "pi" {
-        return Err(format!("Pluck can't run {} yet", agent.harness));
-      }
-      let (model, thinking) = session_model(model, thinking, &agent);
-      args = agent::pi_args(model.as_deref(), thinking.as_deref());
-      let session = AgentSession { id, title, folder: agent.folder, wsl: settings.wsl, last_active: agent::now() };
+      let model = session_model(model, thinking, &agent);
+      let session =
+        AgentSession { id, title, folder: agent.folder, wsl: settings.wsl, harness: agent.harness, thread: None, last_active: agent::now() };
       let added = session.clone();
       agent::update_sessions(&dir, |sessions| sessions.insert(0, added))
         .map_err(|error| format!("Couldn't save the session list: {error}"))?;
-      session
+      (session, Some(model))
     }
   };
-  agent::start(&app, &agents, &dir, &session, &args).map_err(|error| format!("Couldn't start Pi: {error}"))
+  agent::start(&app, &agents, &dir, &session, model.as_ref()).map_err(|error| format!("Couldn't start {}: {error}", session.harness.name()))
 }
 
 #[tauri::command]
-fn agent_send(agents: State<Agents>, id: String, record: String) -> Result<(), String> {
-  agent::send(&agents, &id, &record)
+fn agent_send(app: AppHandle, agents: State<Agents>, id: String, record: serde_json::Value) -> Result<(), String> {
+  agent::send(&app, &agents, &id, record)
 }
 
 #[tauri::command]

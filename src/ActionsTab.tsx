@@ -5,7 +5,7 @@ import { bridge, type Action, type AgentSettings, type HomeState } from "@/bridg
 import { ActionIcon, OUTPUT_ICONS } from "@/ActionIcon";
 import { ChoiceTiles } from "@/ChoiceTiles";
 import { newId, suggestKey } from "@/menuActions";
-import { ModelPicker, effectiveModel, loaded, piStart, type Catalog } from "@/ModelPicker";
+import { ModelPicker, effectiveModel, loaded, harnessStart, type Catalog } from "@/ModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -209,7 +209,7 @@ function ActionDialog({
     : undefined;
   const body = kind === "prompt" ? prompt : run;
   const known = loaded(catalog);
-  const settingsModel = known ? effectiveModel(known, agent, piStart(known)) : {};
+  const settingsModel = known ? effectiveModel(known, agent, harnessStart(known)) : {};
   const valid = name.trim() !== "" && body.trim() !== "" && !keyOwner;
 
   const outputs = kind === "prompt" ? PROMPT_OUTPUTS : OUTPUTS;
