@@ -4,7 +4,7 @@ import { useId } from "react"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-/** A model to offer, with the thinking levels it supports and the one Pi starts it with. */
+/** A model to offer, with the thinking levels it supports and the one the agent starts it with. */
 export type AgentModelChoice = {
   id: string
   label: string
@@ -39,7 +39,7 @@ function Choice({ label, value, options, onChange, disabled }: {
 }
 
 /**
- * Model and thinking level, side by side. The level Pi starts a model with is marked. Switching
+ * Model and thinking level, side by side. The level the agent starts a model with is marked default. Switching
  * models keeps a level the person picked, when the new model supports it, else takes the new
  * model's own.
  */
@@ -71,7 +71,7 @@ export function AgentModelFields({ models, model, thinking, onChange, disabled =
         disabled={disabled}
         options={levels.map((level) => ({
           value: level,
-          label: level === current?.thinking ? `${level} (Pi default)` : level,
+          label: level === current?.thinking ? `${level} (default)` : level,
         }))}
         onChange={(next) => onChange(model, next)}
       />
