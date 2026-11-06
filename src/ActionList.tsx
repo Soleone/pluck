@@ -54,7 +54,7 @@ const SCRIPT_INPUTS = [
 ];
 
 /** The menu's actions, editable here and saved to pluck.toml. */
-export function ActionsTab({
+export function ActionList({
   state,
   catalog,
   onChange,

@@ -8,7 +8,7 @@ import {
   type Update,
 } from "@/bridge";
 import { ChoiceField } from "@/ChoiceField";
-import { ActionsTab } from "@/ActionsTab";
+import { ActionList } from "@/ActionList";
 import {
   ModelPicker,
   effectiveModel,
@@ -18,10 +18,11 @@ import {
   type Catalog,
 } from "@/ModelPicker";
 import { hotkeyFromKeyDown, hotkeyKeys } from "@/hotkey";
-import { Bot, Settings, Zap } from "lucide-react";
+import { Bot, Settings } from "lucide-react";
 import { ThemePicker } from "@/components/soleone/theme-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -30,10 +31,10 @@ function errorText(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught);
 }
 
-/** The window behind the tray icon and the bare hotkey: settings and the menu's actions. */
+/** The window behind the tray icon and the bare hotkey: the menu's actions, with settings in a dialog. */
 export function Home() {
   const [state, setState] = useState<HomeState | null>(null);
-  const [view, setView] = useState<"actions" | "settings">("actions");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [asked, setAsked] = useState<{ wsl: boolean; harness: Harness; catalog: Catalog } | null>(
     null,
   );
@@ -66,20 +67,9 @@ export function Home() {
     <div className="flex h-full flex-col">
       <UpdateBanner />
       <header className="m-4 mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-4">
-          <span className="flex items-center gap-2 font-heading font-medium">
-            <img src="/favicon.svg" alt="" className="size-5" />
-            Pluck
-          </span>
-          <Button
-            variant={view === "actions" ? "secondary" : "ghost"}
-            size="sm"
-            aria-pressed={view === "actions"}
-            onClick={() => setView("actions")}
-          >
-            <Zap />
-            Actions
-          </Button>
+        <span className="flex items-center gap-2 font-heading font-medium">
+          <img src="/favicon.svg" alt="" className="size-5" />
+          Pluck
         </span>
         <span className="flex items-center gap-1">
           <Button
@@ -93,41 +83,43 @@ export function Home() {
           </Button>
           <ThemePicker />
           <Button
-            variant={view === "settings" ? "secondary" : "ghost"}
+            variant="ghost"
             size="icon-sm"
             aria-label="Settings"
-            aria-pressed={view === "settings"}
-            onClick={() => setView("settings")}
+            title="Settings"
+            onClick={() => setSettingsOpen(true)}
           >
             <Settings />
           </Button>
         </span>
       </header>
       <main className="mx-4 mb-4 min-h-0 flex-1 overflow-auto">
-        {view === "settings" ? (
-          <div className="flex flex-col gap-4">
-            <HotkeySetting
-              hotkey={state.hotkey}
-              platform={state.platform}
-              onChange={(hotkey) => setState({ ...state, hotkey })}
-            />
-            <GeneralSetting state={state} onChange={setState} />
-            <AgentSetting
-              agent={state.agent}
-              catalog={catalog}
-              wsl={state.wsl}
-              onChange={(agent) => setState({ ...state, agent })}
-            />
-            <p className="text-muted-foreground">Pluck {state.version}</p>
-          </div>
-        ) : (
-          <ActionsTab
-            state={state}
-            catalog={catalog}
-            onChange={(actions) => setState({ ...state, actions })}
-          />
-        )}
+        <ActionList
+          state={state}
+          catalog={catalog}
+          onChange={(actions) => setState({ ...state, actions })}
+        />
       </main>
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-h-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogHeader>
+          <HotkeySetting
+            hotkey={state.hotkey}
+            platform={state.platform}
+            onChange={(hotkey) => setState({ ...state, hotkey })}
+          />
+          <GeneralSetting state={state} onChange={setState} />
+          <AgentSetting
+            agent={state.agent}
+            catalog={catalog}
+            wsl={state.wsl}
+            onChange={(agent) => setState({ ...state, agent })}
+          />
+          <p className="text-muted-foreground">Pluck {state.version}</p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
