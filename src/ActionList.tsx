@@ -38,7 +38,8 @@ const OUTPUTS = [
   { value: "show", label: "Panel", detail: "Shows the result in a panel" },
   { value: "replace", label: "Replace", detail: "Replaces the selection with the result" },
   { value: "copy", label: "Copy", detail: "Copies the result to the clipboard" },
-  { value: "notify", label: "Notify", detail: "Runs quietly and notifies when done" },
+  { value: "progress", label: "Progress", detail: "Shows a card while it runs, with Stop" },
+  { value: "notify", label: "Notify", detail: "Only tells you when it's done" },
 ] as const;
 const PROMPT_OUTPUTS = [
   { value: "session", label: "Session", detail: "Opens an agent session on the text" },

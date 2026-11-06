@@ -42,7 +42,7 @@ output = "replace"
 
 - `run` is a command. It gets the text on stdin and in `PLUCK_TEXT`, plus `PLUCK_APP`, `PLUCK_TITLE` and `PLUCK_URL`.
 - `agent` is a prompt instead. Add `model` or `thinking` to override the defaults from Settings.
-- `output` is `show`, `copy`, `notify`, `replace` or, for agents, `session`.
+- `output` is `show`, `copy`, `notify`, `progress`, `replace` or, for agents, `session`.
 
 Scripts can run in WSL: check Run in WSL in Settings. The full behavior is in [spec/](spec/README.md).
 

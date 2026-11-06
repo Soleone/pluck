@@ -7,10 +7,11 @@
 #           It gets the selected text on stdin and in PLUCK_TEXT (unless it's very long), plus
 #           PLUCK_APP, PLUCK_TITLE and, for text copied from a browser, PLUCK_URL.
 #   env     optional variables for the script, e.g. env = { VOICE = "af_heart", SPEED = "1.1" }
-#   quiet   true shows no card while it runs, only its result, for actions you start several of
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "replace" previews it and puts it in place of the selection on Enter,
-#           "notify" (the default for scripts) runs in the background and shows its last line.
+#           "notify" (the default for scripts) runs in the background and shows its last line
+#           when it's done, "progress" also shows a card while it runs, with its latest line
+#           and a Stop button.
 #   agent   instead of run: a prompt. The text is sent with it to an agent session, using the
 #           agent set in Settings.
 #           With agent, output is for the agent's reply, and "session" (the default) opens a
@@ -64,3 +65,4 @@ key = "r"
 # Stop it from its card at the bottom of the screen. ENGINE = "edge" uses Microsoft's online voices instead.
 run = 'uv run --script scripts/read.py'
 env = { VOICE = "af_heart", SPEED = "1.0" }
+output = "progress"

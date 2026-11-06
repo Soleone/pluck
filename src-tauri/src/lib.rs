@@ -298,7 +298,7 @@ fn run_action(
     Output::Show | Output::Replace => {
       thread::spawn(move || show(&app, run, produce));
     }
-    Output::Copy | Output::Notify => {
+    Output::Copy | Output::Notify | Output::Progress => {
       hide_menu(&app);
       thread::spawn(move || finish_in_background(&app, &action, pid, produce));
     }
@@ -570,14 +570,14 @@ fn show(app: &AppHandle, run: u32, produce: Box<Produce>) {
   emit(RunEvent { run, line: None, done: true, error: result.err() });
 }
 
-/// Shows the action on an overlay card: while it runs, a notify action's latest line; then "Copied", the
-/// script's first line or the agent's whole reply.
+/// Shows the action on an overlay card: while it runs, a progress action's latest line, and nothing
+/// for notify; then "Copied", the script's last line or the agent's whole reply.
 fn finish_in_background(app: &AppHandle, action: &Action, pid: Option<u32>, produce: Box<Produce>) {
-  let card = overlay::start(app, &action.name, pid, action.quiet);
+  let card = overlay::start(app, &action.name, pid, action.output == Output::Notify);
   let mut output = String::new();
   let result = produce(&mut |text| {
     output.push_str(&text);
-    if action.output == Output::Notify {
+    if action.output == Output::Progress {
       overlay::progress(app, card, output.trim_end().rsplit('\n').next().unwrap_or("").trim());
     }
   });

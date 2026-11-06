@@ -13,7 +13,7 @@ export type Action = {
   agent: string | null;
   /** What happens with the script's stdout or the agent's reply; `session`, for agent actions
    * only, opens an agent session instead. */
-  output: "session" | "show" | "copy" | "notify" | "replace";
+  output: "session" | "show" | "copy" | "notify" | "progress" | "replace";
 } & SessionModel;
 
 /** For a new session; unset ones fall back to the agent settings. */
@@ -253,7 +253,11 @@ const sample: Opened = {
     scriptAction("bookmark", "Save as bookmark", "b"),
     scriptAction("count", "Count words", "w", "show"),
     scriptAction("upper", "Uppercase", "u", "replace"),
-    { ...scriptAction("read", "Read aloud", "r"), run: "uv run --script scripts/read.py" },
+    {
+      ...scriptAction("read", "Read aloud", "r"),
+      run: "uv run --script scripts/read.py",
+      output: "progress",
+    },
   ],
   problems: [],
   lastSession: null,
@@ -372,7 +376,7 @@ function prototype(): Bridge {
       status: "running",
       stoppable: !action.agent,
     };
-    cardListener?.(card);
+    if (action.output !== "notify") cardListener?.(card);
     const timer = window.setTimeout(() => {
       finishing.delete(card.id);
       cardListener?.({ ...card, text, status: "done", stoppable: false });
@@ -413,7 +417,7 @@ function prototype(): Bridge {
           () => runListener?.({ run, line: sample.text.toUpperCase(), done: true, error: null }),
           300,
         );
-      if (action && (output === "notify" || output === "copy")) {
+      if (action && (output === "notify" || output === "progress" || output === "copy")) {
         runInBackground(action);
         return dismiss();
       }

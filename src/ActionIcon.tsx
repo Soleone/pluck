@@ -1,4 +1,4 @@
-import { Bell, Copy, Replace, ScrollText, Sparkles } from "lucide-react";
+import { Bell, Copy, LoaderCircle, Replace, ScrollText, Sparkles } from "lucide-react";
 import type { Action } from "@/bridge";
 
 export const OUTPUT_ICONS = {
@@ -6,6 +6,7 @@ export const OUTPUT_ICONS = {
   show: ScrollText,
   copy: Copy,
   notify: Bell,
+  progress: LoaderCircle,
   replace: Replace,
 };
 

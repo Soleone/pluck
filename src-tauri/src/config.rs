@@ -38,6 +38,7 @@ pub enum Output {
   Show,
   Copy,
   Notify,
+  Progress,
   Replace,
 }
 
@@ -48,6 +49,7 @@ impl Output {
       Output::Show => "show",
       Output::Copy => "copy",
       Output::Notify => "notify",
+      Output::Progress => "progress",
       Output::Replace => "replace",
     }
   }
@@ -71,11 +73,7 @@ pub struct Action {
   /// Extra environment variables for the script. Only pluck.toml sets them, so Home never sees or
   /// rewrites them.
   #[serde(default, skip_serializing)]
-  pub env: BTreeMap<String, String>,
-  /// No card while it runs, only its result. Also set only in pluck.toml.
-  #[serde(default, skip_serializing)]
-  pub quiet: bool,
-}
+  pub env: BTreeMap<String, String>,}
 
 fn notify() -> Output {
   Output::Notify
@@ -250,7 +248,7 @@ mod tests {
   use super::*;
 
   fn prompt(id: &str, text: &str) -> Action {
-    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None, env: BTreeMap::new(), quiet: false }
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None, env: BTreeMap::new() }
   }
 
   fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
@@ -305,6 +303,16 @@ mod tests {
   }
 
   #[test]
+  // output.progress
+  fn progress_output_loads_and_saves() {
+    let dir = dir_with("progress", "[[action]]\nid = \"r\"\nname = \"R\"\nrun = \"r\"\noutput = \"progress\"\n");
+    let actions = load(&dir).actions;
+    assert!(actions[0].output == Output::Progress);
+    save_actions(&dir, &actions).unwrap();
+    assert!(load(&dir).actions[0].output == Output::Progress);
+  }
+
+  #[test]
   // output.default
   fn prompts_open_a_session_unless_they_asked_for_a_reply_in_the_menu() {
     let dir = dir_with("one-off", "[[action]]\nid = \"a\"\nname = \"A\"\nagent = \"x\"\n\n[[action]]\nid = \"b\"\nname = \"B\"\nagent = \"x\"\ninteractive = false\n");
@@ -324,16 +332,6 @@ mod tests {
     assert_eq!(load(&dir).actions[0].env.get("VOICE").map(String::as_str), Some("af_heart"));
   }
 
-  #[test]
-  // action.quiet
-  fn action_quiet_loads_and_survives_saving() {
-    let dir = dir_with("quiet", "[[action]]\nid = \"d\"\nname = \"D\"\nrun = \"d\"\nquiet = true\n");
-    let mut actions = load(&dir).actions;
-    assert!(actions[0].quiet);
-    actions[0].quiet = false;
-    save_actions(&dir, &actions).unwrap();
-    assert!(load(&dir).actions[0].quiet);
-  }
 
   #[test]
   // actions-tab.edit
