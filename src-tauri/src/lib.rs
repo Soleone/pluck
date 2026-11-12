@@ -139,6 +139,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       run_action,
       ask,
+      create_action,
       replace,
       dismiss,
       home_state,
@@ -315,6 +316,14 @@ fn ask(app: AppHandle, session: State<Mutex<Session>>, question: String, continu
     let opened = &session.opened;
     agent_request(title_of(&question), agent_prompt(&question, opened), opened, continue_session)
   };
+  send_to_agents(&app, request);
+}
+
+/// Starts an agent session that builds the action `description` asks for.
+#[tauri::command]
+fn create_action(app: AppHandle, description: String) {
+  let prompt = format!("Create a new action for Pluck's menu: {description}");
+  let request = AgentRequest { title: title_of(&description), prompt, session: None, model: None, thinking: None };
   send_to_agents(&app, request);
 }
 

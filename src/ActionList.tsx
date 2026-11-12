@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
   Ellipsis,
   FileCode,
   FolderOpen,
@@ -64,8 +65,9 @@ export function ActionList({
   catalog: Catalog;
   onChange: (actions: Action[]) => void;
 }) {
-  /** The action in the dialog: an existing one, a new one, or none while closed. */
-  const [editing, setEditing] = useState<Action | "new" | null>(null);
+  /** The action in the dialog: an existing one, a new one, one being described to the agent, or
+   * none while closed. */
+  const [editing, setEditing] = useState<Action | "new" | "describe" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const actions = state.actions;
 
@@ -156,7 +158,8 @@ export function ActionList({
           </li>
         ))}
       </ul>
-      {editing && (
+      {editing === "describe" && <DescribeDialog onClose={() => setEditing(null)} />}
+      {editing && editing !== "describe" && (
         <ActionDialog
           action={editing === "new" ? null : editing}
           actions={actions}
@@ -175,6 +178,7 @@ export function ActionList({
               ? undefined
               : () => save(actions.filter((action) => action.id !== editing.id))
           }
+          onDescribe={editing === "new" ? () => setEditing("describe") : undefined}
         />
       )}
     </div>
@@ -190,6 +194,7 @@ function ActionDialog({
   onClose,
   onSave,
   onDelete,
+  onDescribe,
 }: {
   action: Action | null;
   actions: Action[];
@@ -198,6 +203,7 @@ function ActionDialog({
   onClose: () => void;
   onSave: (action: Action) => Promise<void>;
   onDelete?: () => Promise<void>;
+  onDescribe?: () => void;
 }) {
   // By id: the window reloads the actions on focus, so the objects change while the dialog is open.
   const others = actions.filter((other) => other.id !== action?.id);
@@ -378,12 +384,74 @@ function ActionDialog({
                 Delete
               </Button>
             )}
+            {onDescribe && (
+              <Button type="button" variant="ghost" onClick={onDescribe}>
+                <Bot />
+                Create with agent
+              </Button>
+            )}
             <span className="flex-1" />
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" title="Ctrl+Enter">
               Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Asks what a new action should do and hands that to a new agent session, which builds it. */
+function DescribeDialog({ onClose }: { onClose: () => void }) {
+  const [description, setDescription] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    bridge
+      .createAction(description.trim())
+      .then(onClose, (caught: unknown) => setProblem(String(caught)));
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <form
+          onSubmit={submit}
+          onKeyDown={(event) =>
+            event.key === "Enter" &&
+            (event.ctrlKey || event.metaKey) &&
+            event.currentTarget.requestSubmit()
+          }
+          className="flex flex-col gap-4"
+        >
+          <DialogHeader>
+            <DialogTitle>Create with agent</DialogTitle>
+            <DialogDescription>
+              An agent session opens, writes the action and its script, and tries it.
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="action-description">What should it do?</FieldLabel>
+            <Textarea
+              id="action-description"
+              autoFocus
+              rows={5}
+              placeholder="Turn the selected text into a markdown link to the page it came from, and replace the selection with it."
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </Field>
+          {problem && <FieldError>{problem}</FieldError>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" title="Ctrl+Enter" disabled={!description.trim()}>
+              Create
             </Button>
           </DialogFooter>
         </form>

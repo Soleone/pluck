@@ -131,6 +131,8 @@ type Bridge = {
   editConfig(): Promise<void>;
   /** Writes the menu's actions, in order, to pluck.toml. Rejects while an entry there is invalid. */
   saveActions(actions: Action[]): Promise<void>;
+  /** Opens a new agent session that builds the action `description` asks for. */
+  createAction(description: string): Promise<void>;
   /** A newer release, or null when current, offline or a development build. */
   availableUpdate(): Promise<Update | null>;
   setAgentSettings(agent: AgentSettings): Promise<void>;
@@ -164,6 +166,7 @@ const native: Bridge = {
   run: (actionId, run, continueSession) =>
     invoke("run_action", { id: actionId, run, continueSession }),
   ask: (question, continueSession) => invoke("ask", { question, continueSession }),
+  createAction: (description) => invoke("create_action", { description }),
   replace: (text) => invoke("replace", { text }),
   dismiss: () => invoke("dismiss"),
   homeState: () => invoke("home_state"),
@@ -430,6 +433,15 @@ function prototype(): Bridge {
       );
     },
     ask: async (question, continueSession) => handOff(question, question, continueSession),
+    async createAction(description) {
+      pendingRequest = {
+        title: description,
+        prompt: `Create a new action for Pluck's menu: ${description}`,
+        session: null,
+        ...sessionDefaults,
+      };
+      window.dispatchEvent(new Event(SHOW_AGENTS_EVENT));
+    },
     replace: dismiss,
     dismiss,
     homeState: async () => ({
