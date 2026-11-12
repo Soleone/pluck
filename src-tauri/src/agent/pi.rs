@@ -7,12 +7,15 @@ use std::{fs, io::Write};
 pub fn args(kind: &Kind) -> Vec<String> {
   let mut args = vec!["--mode".to_string(), "rpc".into()];
   match kind {
-    Kind::New(id, _) => args.extend(["--session-id".into(), id.to_string()]),
-    Kind::Resume(session) => args.extend(["--session-id".into(), session.id.clone()]),
+    Kind::New(id, ..) => args.extend(["--session-id".into(), id.to_string()]),
+    Kind::Resume(session, _) => args.extend(["--session-id".into(), session.id.clone()]),
     Kind::Reply(_) => args.push("--no-session".into()),
   }
-  if let Kind::New(_, model) | Kind::Reply(model) = kind {
+  if let Kind::New(_, model, _) | Kind::Reply(model) = kind {
     args.extend(model.flags("--thinking"));
+  }
+  if let Some(context) = kind.context() {
+    args.extend(["--append-system-prompt".into(), context.to_string()]);
   }
   args
 }
@@ -69,4 +72,17 @@ pub fn models(folder: &str, wsl: bool) -> Result<Value, String> {
     serde_json::json!({ "model": format!("{}/{}", model["provider"].as_str().unwrap_or(""), model["id"].as_str().unwrap_or("")), "thinking": data["thinkingLevel"] })
   });
   Ok(serde_json::json!({ "models": models["data"]["models"], "settings": settings, "start": start }))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  // agent.context
+  fn agent_context_a_session_is_told_about_pluck_and_a_reply_is_not() {
+    let model = Model::default();
+    assert_eq!(args(&Kind::New("s", &model, "About pluck"))[4..], ["--append-system-prompt", "About pluck"]);
+    assert!(!args(&Kind::Reply(&model)).contains(&"--append-system-prompt".to_string()));
+  }
 }

@@ -21,6 +21,8 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager};
 
 const SESSIONS: &str = "agents.json";
+/// Pluck's, in the config folder next to the user's files.
+const GUIDE: &str = "GUIDE.md";
 /// For a shell: `$0` is the working folder, the rest the harness and its arguments. A login shell
 /// puts the harness on the PATH.
 const LAUNCH: &str = r#"cd "${0/#\~/$HOME}" && exec "$@""#;
@@ -70,12 +72,41 @@ impl Model {
   }
 }
 
-/// What a harness process is for.
+/// What a harness process is for. A session comes with what it is told about pluck (`context`).
 pub enum Kind<'a> {
-  New(&'a str, &'a Model),
-  Resume(&'a AgentSession),
+  New(&'a str, &'a Model, &'a str),
+  Resume(&'a AgentSession, &'a str),
   /// One reply that isn't kept.
   Reply(&'a Model),
+}
+
+impl Kind<'_> {
+  fn context(&self) -> Option<&str> {
+    match self {
+      Kind::New(_, _, context) | Kind::Resume(_, context) => Some(context),
+      Kind::Reply(_) => None,
+    }
+  }
+}
+
+/// What a session is told about pluck: where its actions live and which guide to read before
+/// changing them. Writes that guide. One line without quotes, since on Windows it passes through
+/// cmd.exe as an argument.
+fn context(dir: &Path, wsl: bool) -> io::Result<String> {
+  fs::create_dir_all(dir)?;
+  fs::write(dir.join(GUIDE), include_str!("agent/guide.md"))?;
+  let folder = dir.display().to_string();
+  let folder = if wsl { wsl_path(&folder) } else { folder };
+  let shell = if wsl {
+    "bash in WSL"
+  } else if cfg!(windows) {
+    "cmd.exe"
+  } else {
+    "sh"
+  };
+  Ok(format!(
+    "You run inside Pluck, a desktop app that sends the text the user selects in any app to their own actions, which are scripts and agent prompts in a small hotkey menu. The actions are in pluck.toml in Pluck's config folder, {folder}, and its scripts run through {shell}. When asked to create, change or fix an action or its script, read {GUIDE} in that folder first."
+  ))
 }
 
 /// Translates between Pi's records and the harness's own.
@@ -214,9 +245,10 @@ pub fn start(app: &AppHandle, agents: &Agents, dir: &Path, session: &AgentSessio
   if running.contains_key(&session.id) {
     return Ok(());
   }
+  let context = context(dir, session.wsl)?;
   let kind = match model {
-    Some(model) => Kind::New(&session.id, model),
-    None => Kind::Resume(session),
+    Some(model) => Kind::New(&session.id, model, &context),
+    None => Kind::Resume(session, &context),
   };
   let (adapter, args, first) = Adapter::open(session.harness, &kind, session.wsl);
   let mut child = spawn(session.harness, &session.folder, session.wsl, &args)?;

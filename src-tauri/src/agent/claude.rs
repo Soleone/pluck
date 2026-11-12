@@ -37,11 +37,11 @@ impl Adapter {
   pub fn open(kind: &Kind, wsl: bool) -> (Adapter, Vec<String>) {
     let mut args: Vec<String> = STREAM.map(String::from).to_vec();
     let (session, thinking) = match kind {
-      Kind::New(id, model) => {
+      Kind::New(id, model, _) => {
         args.extend(["--session-id".into(), id.to_string()]);
         (Some(id.to_string()), model.thinking.clone())
       }
-      Kind::Resume(session) => {
+      Kind::Resume(session, _) => {
         args.extend(["--resume".into(), session.id.clone()]);
         (Some(session.id.clone()), None)
       }
@@ -50,7 +50,10 @@ impl Adapter {
         (None, None)
       }
     };
-    if let Kind::New(_, model) | Kind::Reply(model) = kind {
+    if let Some(context) = kind.context() {
+      args.extend(["--append-system-prompt".into(), context.to_string()]);
+    }
+    if let Kind::New(_, model, _) | Kind::Reply(model) = kind {
       // Models without effort levels offer only "off", which Claude Code has no flag for.
       let flags = model.flags("--effort");
       args.extend(flags.chunks(2).filter(|flag| flag[1] != "off").flatten().cloned());
@@ -318,7 +321,7 @@ mod tests {
   use crate::agent::Model;
 
   fn session() -> Adapter {
-    Adapter::open(&Kind::New("s", &Model::default()), false).0
+    Adapter::open(&Kind::New("s", &Model::default(), ""), false).0
   }
 
   fn records(adapter: &mut Adapter, lines: &[Value]) -> Vec<Value> {

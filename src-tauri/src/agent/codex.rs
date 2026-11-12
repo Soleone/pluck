@@ -23,10 +23,12 @@ impl Adapter {
   /// The adapter and what opens the thread: Codex's handshake, then a new thread or the session's own.
   pub fn open(kind: &Kind) -> (Adapter, Vec<Value>) {
     let thread = match kind {
-      Kind::Resume(session) if session.thread.is_some() => json!({ "id": "thread", "method": "thread/resume", "params": { "threadId": session.thread } }),
-      Kind::New(_, model) | Kind::Reply(model) => start(model.model.as_deref(), model.thinking.as_deref(), matches!(kind, Kind::Reply(_))),
+      Kind::Resume(session, context) if session.thread.is_some() => {
+        json!({ "id": "thread", "method": "thread/resume", "params": { "threadId": session.thread, "developerInstructions": context } })
+      }
+      Kind::New(_, model, _) | Kind::Reply(model) => start(model.model.as_deref(), model.thinking.as_deref(), kind.context()),
       // The session never got a thread, so it starts one.
-      Kind::Resume(_) => start(None, None, false),
+      Kind::Resume(..) => start(None, None, kind.context()),
     };
     let adapter = Adapter { thread: None, turn: None, waiting: Vec::new(), state: None, history: None, history_asked: false, asked: HashMap::new() };
     (adapter, [handshake().to_vec(), vec![thread]].concat())
@@ -152,10 +154,11 @@ fn handshake() -> [Value; 2] {
   [json!({ "id": "initialize", "method": "initialize", "params": { "clientInfo": client, "capabilities": null } }), json!({ "method": "initialized" })]
 }
 
-/// A new thread in the folder Codex runs in; a reply's isn't kept.
-fn start(model: Option<&str>, thinking: Option<&str>, ephemeral: bool) -> Value {
+/// A new thread in the folder Codex runs in. A session's is told `context`; a reply has none and isn't kept.
+fn start(model: Option<&str>, thinking: Option<&str>, context: Option<&str>) -> Value {
   let config = thinking.map(|level| json!({ "model_reasoning_effort": level }));
-  json!({ "id": "thread", "method": "thread/start", "params": { "model": model, "config": config, "ephemeral": ephemeral } })
+  let params = json!({ "model": model, "config": config, "ephemeral": context.is_none(), "developerInstructions": context });
+  json!({ "id": "thread", "method": "thread/start", "params": params })
 }
 
 fn turn(thread: &str, message: &Value) -> Value {
@@ -240,7 +243,16 @@ mod tests {
   use crate::agent::Model;
 
   fn session() -> Adapter {
-    Adapter::open(&Kind::New("s", &Model::default())).0
+    Adapter::open(&Kind::New("s", &Model::default(), "")).0
+  }
+
+  #[test]
+  // agent.context
+  fn agent_context_a_session_is_told_about_pluck_and_a_reply_is_not() {
+    let model = Model::default();
+    let thread = |kind| Adapter::open(&kind).1[2]["params"].clone();
+    assert_eq!(thread(Kind::New("s", &model, "About pluck"))["developerInstructions"], "About pluck");
+    assert_eq!(thread(Kind::Reply(&model)), json!({ "model": null, "config": null, "ephemeral": true, "developerInstructions": null }));
   }
 
   fn thread_opened() -> Value {
