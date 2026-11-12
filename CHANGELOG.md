@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Soleone/pluck/compare/v0.2.0...v0.3.0) (2026-11-12)
+
+### Features
+
+* **actions:** Create with agent in the new action dialog opens a session that builds the action from a description ([343a844](https://github.com/Soleone/pluck/commit/343a8445cdc7d66c79c9c6cde7578308cabd6d32))
+* **agent:** sessions know they run inside pluck and read a guide in the config folder before creating or changing actions ([e26b70b](https://github.com/Soleone/pluck/commit/e26b70b2707ea6a8035d5e6ef06e908252eed494))
+
 ## [0.2.0](https://github.com/Soleone/pluck/compare/v0.1.5...v0.2.0) (2026-11-06)
 
 ### Features
