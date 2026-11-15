@@ -303,6 +303,14 @@ fn run_action(
       hide_menu(&app);
       thread::spawn(move || finish_in_background(&app, &action, pid, produce));
     }
+    Output::None => {
+      hide_menu(&app);
+      thread::spawn(move || {
+        if let Err(error) = produce(&mut |_| {}) {
+          overlay::problem(&app, &action.name, &error);
+        }
+      });
+    }
     Output::Session => unreachable!("only prompts open a session, and they returned above"),
   }
   Ok(())

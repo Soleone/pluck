@@ -41,6 +41,7 @@ const OUTPUTS = [
   { value: "copy", label: "Copy", detail: "Copies the result to the clipboard" },
   { value: "progress", label: "Progress", detail: "Shows a card while it runs, with Stop" },
   { value: "notify", label: "Notify", detail: "Only tells you when it's done" },
+  { value: "none", label: "Silent", detail: "Shows nothing unless it fails" },
 ] as const;
 const PROMPT_OUTPUTS = [
   { value: "session", label: "Session", detail: "Opens an agent session on the text" },

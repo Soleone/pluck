@@ -13,7 +13,7 @@ export type Action = {
   agent: string | null;
   /** What happens with the script's stdout or the agent's reply; `session`, for agent actions
    * only, opens an agent session instead. */
-  output: "session" | "show" | "copy" | "notify" | "progress" | "replace";
+  output: "session" | "show" | "copy" | "notify" | "progress" | "replace" | "none";
 } & SessionModel;
 
 /** For a new session; unset ones fall back to the agent settings. */
@@ -256,7 +256,7 @@ const sample: Opened = {
     scriptAction("bookmark", "Save as bookmark", "b"),
     scriptAction("count", "Count words", "w", "show"),
     scriptAction("upper", "Uppercase", "u", "replace"),
-    { ...scriptAction("read", "Read aloud", "r"), run: "yap --source-env PLUCK" },
+    { ...scriptAction("read", "Read aloud", "r", "none"), run: "yap --source-env PLUCK" },
   ],
   problems: [],
   lastSession: null,
@@ -267,7 +267,6 @@ const backgroundResults: Record<string, [string, number]> = {
   translate: ["Opened Google Translate", 900],
   search: ["Opened the search", 700],
   bookmark: ["Saved to bookmarks", 1200],
-  read: ["Done", 12_000],
 };
 
 /** How the menu hands its text to an agent, after the action's prompt or the question. */

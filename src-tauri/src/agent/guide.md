@@ -31,6 +31,7 @@ An entry needs `id`, `name` and one of `run` or `agent`. An entry that breaks a 
 | ---------- | ----------------------------------------------------------------------------------------------------------- |
 | `notify`   | Runs in the background. When done, a card shows the script's last line of stdout, so end with a result line |
 | `progress` | Like `notify`, with a card while it runs showing the latest line and a Stop button. For long runs           |
+| `none`     | Like `notify`, but nothing shows unless it fails. For a command that shows its own window                   |
 | `show`     | A panel at the menu streams stdout as it arrives                                                            |
 | `copy`     | stdout goes to the clipboard                                                                                |
 | `replace`  | A panel previews stdout, and Enter puts it in place of the selection. Print only the new text               |

@@ -1,4 +1,4 @@
-import { Bell, Copy, LoaderCircle, Replace, ScrollText, Sparkles } from "lucide-react";
+import { Bell, BellOff, Copy, LoaderCircle, Replace, ScrollText, Sparkles } from "lucide-react";
 import type { Action } from "@/bridge";
 
 export const OUTPUT_ICONS = {
@@ -8,6 +8,7 @@ export const OUTPUT_ICONS = {
   notify: Bell,
   progress: LoaderCircle,
   replace: Replace,
+  none: BellOff,
 };
 
 /** What picking the action does: a sparkle for prompts, else what happens with the output. */

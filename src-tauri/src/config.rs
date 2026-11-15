@@ -38,6 +38,7 @@ pub enum Output {
   Notify,
   Progress,
   Replace,
+  None,
 }
 
 impl Output {
@@ -49,6 +50,7 @@ impl Output {
       Output::Notify => "notify",
       Output::Progress => "progress",
       Output::Replace => "replace",
+      Output::None => "none",
     }
   }
 }
@@ -303,11 +305,21 @@ mod tests {
   #[test]
   // output.progress
   fn progress_output_loads_and_saves() {
-    let dir = dir_with("progress", "[[action]]\nid = \"r\"\nname = \"R\"\nrun = \"r\"\noutput = \"progress\"\n");
+    output_loads_and_saves("progress", Output::Progress);
+  }
+
+  #[test]
+  // output.none
+  fn none_output_loads_and_saves() {
+    output_loads_and_saves("none", Output::None);
+  }
+
+  fn output_loads_and_saves(name: &str, output: Output) {
+    let dir = dir_with(name, &format!("[[action]]\nid = \"r\"\nname = \"R\"\nrun = \"r\"\noutput = \"{name}\"\n"));
     let actions = load(&dir).actions;
-    assert!(actions[0].output == Output::Progress);
+    assert!(actions[0].output == output);
     save_actions(&dir, &actions).unwrap();
-    assert!(load(&dir).actions[0].output == Output::Progress);
+    assert!(load(&dir).actions[0].output == output);
   }
 
   #[test]

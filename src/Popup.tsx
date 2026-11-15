@@ -21,7 +21,10 @@ const STARTED_MS = 450;
 
 const showsPanel = (action: Action) => action.output === "show" || action.output === "replace";
 const runsInBackground = (action: Action) =>
-  action.output === "copy" || action.output === "notify" || action.output === "progress";
+  action.output === "copy" ||
+  action.output === "notify" ||
+  action.output === "progress" ||
+  action.output === "none";
 
 type Result = { action: Action; run: number; text: string; done: boolean; error: string | null };
 
@@ -36,7 +39,7 @@ export function Popup() {
   const [continueLast, setContinueLast] = useState(false);
   /** The row being picked: it plays its press, then the action runs. */
   const [picked, setPicked] = useState<string | null>(null);
-  /** A `copy`, `notify` or `progress` action, confirmed for a moment before the menu closes. */
+  /** A `copy`, `notify`, `progress` or `none` action, confirmed for a moment before the menu closes. */
   const [started, setStarted] = useState<Action | null>(null);
   const runCount = useRef(0);
   const input = useRef<HTMLInputElement>(null);
