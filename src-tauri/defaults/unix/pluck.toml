@@ -5,7 +5,7 @@
 #   key     optional letter that runs it straight from the menu
 #   run     command line, run in this folder by sh. It gets the selected text on stdin and in
 #           PLUCK_TEXT, plus PLUCK_APP and PLUCK_TITLE.
-#   env     optional variables for the script, e.g. env = { VOICE = "af_heart", SPEED = "1.1" }
+#   env     optional variables for the script, e.g. env = { LANGUAGE = "de" }
 #   output  "show" streams stdout into a panel, "copy" puts it on the clipboard,
 #           "replace" previews it and puts it in place of the selection on Enter,
 #           "notify" (the default for scripts) runs in the background and shows its last line
@@ -60,8 +60,7 @@ output = "replace"
 id = "read"
 name = "Read aloud"
 key = "r"
-# Needs uv (https://docs.astral.sh/uv). The first run downloads a 300 MB voice model.
-# Stop it from its card at the bottom of the screen. ENGINE = "edge" uses Microsoft's online voices instead.
-run = 'uv run --script scripts/read.py'
-env = { VOICE = "af_heart", SPEED = "1.0" }
-output = "progress"
+# Needs yap (https://github.com/Soleone/yap), which reads it with a local voice and shows its
+# own pause and close controls. --source-env PLUCK keeps the app, title and page with the read in
+# yap's library. Add --voice Harper or --speed 1.2 for another voice or speed.
+run = 'yap --source-env PLUCK'

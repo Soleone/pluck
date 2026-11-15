@@ -14,6 +14,7 @@ Every action is one entry in a config file. An action either runs a command, whi
 - **Ask anything:** type a question instead of picking an action, and an agent gets it along with the selected text, the app and the page it came from.
 - **Agent sessions:** agent actions open a chat window with the reply streaming in and each web search or tool call shown as a step. Pluck drives the harness you already use, [Pi](https://github.com/badlogic/pi-mono), Claude Code or Codex, so the models, logins and extensions you set up just work.
 - **Yours:** actions are plain scripts in your config folder. Pluck writes a few samples on first start.
+- **Read aloud:** the Read aloud sample hands the text to [yap](https://github.com/Soleone/yap), a local text-to-speech app with voices to pick from, its own player and a cache, so text it has read once plays again at once.
 
 ## Get it
 

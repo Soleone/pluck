@@ -20,7 +20,7 @@ output = "show"
 | `run`               | A command line, run in this folder. Use single quotes so backslashes stay as they are                      |
 | `agent`             | Instead of `run`: a prompt, sent to the agent followed by the text and where it came from                  |
 | `output`            | What happens with the script's stdout or the agent's reply, see below                                      |
-| `env`               | Script actions: extra variables, `env = { VOICE = "af_heart" }`. Put a script's settings here              |
+| `env`               | Script actions: extra variables, `env = { LANGUAGE = "de" }`. Put a script's settings here                 |
 | `model`, `thinking` | Agent actions: the model and thinking level to use instead of the ones in Settings. Leave out unless asked |
 
 An entry needs `id`, `name` and one of `run` or `agent`. An entry that breaks a rule is left out of the menu, which then shows one line naming the problem, as does Pluck's home window.

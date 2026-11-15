@@ -256,11 +256,7 @@ const sample: Opened = {
     scriptAction("bookmark", "Save as bookmark", "b"),
     scriptAction("count", "Count words", "w", "show"),
     scriptAction("upper", "Uppercase", "u", "replace"),
-    {
-      ...scriptAction("read", "Read aloud", "r"),
-      run: "uv run --script scripts/read.py",
-      output: "progress",
-    },
+    { ...scriptAction("read", "Read aloud", "r"), run: "yap --source-env PLUCK" },
   ],
   problems: [],
   lastSession: null,

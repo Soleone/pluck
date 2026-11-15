@@ -9,24 +9,22 @@ const SETTINGS: &str = "settings.json";
 
 /// Written on first run so the menu has something to try.
 #[cfg(windows)]
-const DEFAULT_FILES: [(&str, &str); 7] = [
+const DEFAULT_FILES: [(&str, &str); 6] = [
   ("pluck.toml", include_str!("../defaults/windows/pluck.toml")),
   ("scripts/translate.ps1", include_str!("../defaults/windows/scripts/translate.ps1")),
   ("scripts/search.ps1", include_str!("../defaults/windows/scripts/search.ps1")),
   ("scripts/bookmark.ps1", include_str!("../defaults/windows/scripts/bookmark.ps1")),
   ("scripts/count.ps1", include_str!("../defaults/windows/scripts/count.ps1")),
   ("scripts/upper.ps1", include_str!("../defaults/windows/scripts/upper.ps1")),
-  ("scripts/read.py", include_str!("../defaults/read.py")),
 ];
 #[cfg(not(windows))]
-const DEFAULT_FILES: [(&str, &str); 7] = [
+const DEFAULT_FILES: [(&str, &str); 6] = [
   ("pluck.toml", include_str!("../defaults/unix/pluck.toml")),
   ("scripts/translate.sh", include_str!("../defaults/unix/scripts/translate.sh")),
   ("scripts/search.sh", include_str!("../defaults/unix/scripts/search.sh")),
   ("scripts/bookmark.sh", include_str!("../defaults/unix/scripts/bookmark.sh")),
   ("scripts/count.sh", include_str!("../defaults/unix/scripts/count.sh")),
   ("scripts/upper.sh", include_str!("../defaults/unix/scripts/upper.sh")),
-  ("scripts/read.py", include_str!("../defaults/read.py")),
 ];
 
 /// What happens with a script's stdout or an agent's reply. `Session` is for prompts only: they
