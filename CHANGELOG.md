@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Soleone/pluck/compare/v0.3.0...v0.3.1) (2026-11-15)
+
+### Features
+
+* **actions:** the Read aloud sample hands the text to yap, a local text-to-speech app, in place of the Python script ([4595659](https://github.com/Soleone/pluck/commit/4595659defc634b52a42a53e499a14eba061cbef))
+* add silent output mode for actions ([9efdf1e](https://github.com/Soleone/pluck/commit/9efdf1e2e371a280f01fe41c171c34b491a8b02e))
+
 ## [0.3.0](https://github.com/Soleone/pluck/compare/v0.2.0...v0.3.0) (2026-11-12)
 
 ### Features
