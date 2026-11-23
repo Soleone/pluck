@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896">
+  <mask id="star">
+    <rect x="64" y="64" width="896" height="896" fill="#fff"/>
+    <path fill="#000" stroke="#000" stroke-width="24" stroke-linejoin="round" d="M512 216Q555.2 442.8 782 486Q555.2 529.2 512 756Q468.8 529.2 242 486Q468.8 442.8 512 216Z"/>
+  </mask>
+  <path fill="#D4AF37" mask="url(#star)" d="M512 960C372 872 96 584 96 330 96 160 290 64 512 64s416 96 416 266c0 254-276 542-416 630z"/>
+</svg>

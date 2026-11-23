@@ -645,7 +645,7 @@ fn add_tray(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
   let agents = MenuItem::with_id(app, "agents", "Agents", true, None::<&str>)?;
   let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
   TrayIconBuilder::with_id(TRAY)
-    .icon(app.default_window_icon().expect("the app has an icon").clone())
+    .icon(tauri::include_image!("icons/tray.png"))
     .tooltip(tooltip(hotkey))
     .menu(&Menu::with_items(app, &[&home, &agents, &quit])?)
     .show_menu_on_left_click(false)

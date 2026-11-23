@@ -12,6 +12,7 @@ Pluck is a desktop app (Tauri) that sends text selected in any app to the user's
   - macOS: `cargo clippy --tests --target aarch64-apple-darwin` with `CC_aarch64_apple_darwin` and `AR_aarch64_apple_darwin` pointing at stubs.
   - Linux: `cargo clippy --tests` with `PKG_CONFIG` pointing at a stub that answers `--modversion` with any version and succeeds otherwise.
 - The icon is `public/favicon.svg`. After changing it, run `pnpm tauri icon public/favicon.svg` and delete the generated `android/` and `ios/` folders.
+- The tray icon is the bare glyph in `src-tauri/icons/tray.svg`, since the tile leaves the glyph too small at tray size. Render it with `pnpm tauri icon src-tauri/icons/tray.svg -o <tmp>` and copy `<tmp>/32x32.png` to `src-tauri/icons/tray.png`.
 
 ## Releasing
 
