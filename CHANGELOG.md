@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.3](https://github.com/Soleone/pluck/compare/v0.3.2...v0.3.3) (2026-11-23)
+
+### Bug Fixes
+
+* **tray:** tray icon is the bare gold glyph, filling the slot instead of a shrunken tile ([cf6d14d](https://github.com/Soleone/pluck/commit/cf6d14d600f89c750fc74c854fa88926f8143e3d))
+
 ## [0.3.2](https://github.com/Soleone/pluck/compare/v0.3.1...v0.3.2) (2026-11-22)
 
 ## [0.3.1](https://github.com/Soleone/pluck/compare/v0.3.0...v0.3.1) (2026-11-15)
