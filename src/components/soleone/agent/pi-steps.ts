@@ -7,6 +7,8 @@ type Args = Record<string, unknown>
 export type PiStep = {
   verbs: Record<Status, string>
   subject: (args: Args) => string | undefined
+  /** The full call when the title can cut it short, like a long or multi-line command. */
+  input?: (args: Args) => string | undefined
   /** Web pages the step searched or read, from its arguments or its output. */
   sources?: (args: Args, output?: string) => AgentSource[] | undefined
 }
@@ -27,7 +29,11 @@ const run = { running: "Running", complete: "Ran", error: "Failed to run" }
 
 /** Pi's built-in tools and pi-web-access's web tools. Hosts spread this into a table with their own tools. */
 export const piSteps: Record<string, PiStep> = {
-  bash: { verbs: run, subject: ({ command }) => firstLine(command) },
+  bash: {
+    verbs: run,
+    subject: ({ command }) => firstLine(command),
+    input: ({ command }) => (typeof command === "string" ? command : undefined),
+  },
   read: { verbs: { running: "Reading", complete: "Read", error: "Failed to read" }, subject: ({ path }) => firstLine(path) },
   edit: { verbs: { running: "Editing", complete: "Edited", error: "Failed to edit" }, subject: ({ path }) => firstLine(path) },
   write: { verbs: { running: "Writing", complete: "Wrote", error: "Failed to write" }, subject: ({ path }) => firstLine(path) },
@@ -54,17 +60,18 @@ export const piSteps: Record<string, PiStep> = {
   },
 }
 
-/** The title and sources of one tool call; tools missing from `steps` read "Running <name>". */
+/** The title, input and sources of one tool call; tools missing from `steps` read "Running <name>" and show their arguments. */
 export function piStep(
   call: { name: string; arguments: Args },
   status: Status,
   output?: string,
   steps: Record<string, PiStep> = piSteps,
-): Pick<AgentTool, "label" | "sources"> {
+): Pick<AgentTool, "label" | "input" | "sources"> {
   const step = steps[call.name]
-  if (!step) return { label: `${run[status]} ${call.name}` }
+  if (!step) return { label: `${run[status]} ${call.name}`, input: JSON.stringify(call.arguments, null, 2) }
   return {
     label: `${step.verbs[status]} ${step.subject(call.arguments) ?? ""}`.trim(),
+    input: step.input?.(call.arguments),
     sources: step.sources?.(call.arguments, output),
   }
 }

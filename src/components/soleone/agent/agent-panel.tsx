@@ -1,5 +1,3 @@
-"use client"
-
 import { memo, useId, useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench } from "lucide-react"
@@ -11,6 +9,7 @@ import {
   InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Message, MessageContent } from "@/components/ui/message"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/soleone/tooltip/tooltip"
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
@@ -26,6 +25,8 @@ export type AgentTool = {
   /** The step's title for its current status: "Searching the web", "Searched the web", "Failed to search the web". */
   label: string
   status: "running" | "complete" | "error"
+  /** The full call, like the whole command, shown when the step opens since the title may cut it short. */
+  input?: string
   output?: string
   /** Web pages the step searched or read, shown as site chips under its title. */
   sources?: AgentSource[]
@@ -128,13 +129,20 @@ function Sources({ sources }: { sources: AgentSource[] }) {
     <ul aria-label="Sources" className="flex flex-wrap gap-1 pl-6">
       {[...sites].slice(0, shownSites).map(([host, source]) => (
         <li key={host}>
-          <Badge
-            variant="outline"
-            render={<a href={source.url} target="_blank" rel="noopener noreferrer" title={source.title ?? source.url} />}
-          >
-            <SiteIcon host={host} />
-            {host.replace(/^www\./, "")}
-          </Badge>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Badge
+                  variant="outline"
+                  render={<a href={source.url} target="_blank" rel="noopener noreferrer" />}
+                />
+              }
+            >
+              <SiteIcon host={host} />
+              {host.replace(/^www\./, "")}
+            </TooltipTrigger>
+            <TooltipContent className="wrap-anywhere">{source.title ?? source.url}</TooltipContent>
+          </Tooltip>
         </li>
       ))}
       {hidden > 0 && <li><Badge variant="secondary">+{hidden}</Badge></li>}
@@ -149,11 +157,16 @@ function ToolStep({ tool }: { tool: AgentTool }) {
       <TraceTitle>{tool.label}</TraceTitle>
     </TraceLine>
   )
-  const step = tool.output ? (
+  const step = tool.input || tool.output ? (
     <TraceCollapsible>
       <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
-      <TraceCollapsibleContent>
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{tool.output}</pre>
+      <TraceCollapsibleContent className="flex flex-col gap-2">
+        {tool.input && (
+          <pre className="max-h-48 overflow-auto rounded-md bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre-wrap wrap-anywhere text-foreground">{tool.input}</pre>
+        )}
+        {tool.output && (
+          <pre className="max-h-48 overflow-auto font-mono text-xs whitespace-pre-wrap wrap-anywhere">{tool.output}</pre>
+        )}
       </TraceCollapsibleContent>
     </TraceCollapsible>
   ) : line
@@ -327,9 +340,12 @@ export function AgentPanel({
           {working ? "Agent working. You can stop it at any time." : "Enter to send. Shift+Enter for a new line."}
         </p>
         {model && (
-          <Badge variant="secondary" title={`Model ${model.name}, thinking ${model.thinking}`}>
-            <Brain />{model.name} · {model.thinking}
-          </Badge>
+          <Tooltip>
+            <TooltipTrigger render={<Badge variant="secondary" />}>
+              <Brain />{model.name} · {model.thinking}
+            </TooltipTrigger>
+            <TooltipContent>Model {model.name}, thinking {model.thinking}</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </section>
