@@ -221,3 +221,17 @@ test("agent.web: pages being read show their sites while they load", () => {
     },
   ]);
 });
+
+test("agent.model: the context size comes from the last finished reply, or a harness's own report", () => {
+  const reply = (totalTokens: number, stopReason?: string) => ({
+    type: "message_end",
+    message: {
+      role: "assistant" as const,
+      content: text("ok"),
+      usage: { totalTokens },
+      stopReason,
+    },
+  });
+  expect(replay([reply(1200), reply(5, "aborted")]).contextTokens).toBe(1200);
+  expect(replay([reply(1200), { type: "context_usage", tokens: 3400 }]).contextTokens).toBe(3400);
+});

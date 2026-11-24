@@ -90,6 +90,9 @@ impl Adapter {
           _ => {}
         }
       }
+      (None, Some("thread/tokenUsage/updated")) => {
+        out.emit.push(json!({ "type": "context_usage", "tokens": params["tokenUsage"]["last"]["totalTokens"] }));
+      }
       (None, Some("turn/completed")) => {
         self.turn = None;
         let turn = &params["turn"];
@@ -283,12 +286,14 @@ mod tests {
       json!({ "method": "item/completed", "params": { "item": { "type": "agentMessage", "id": "m", "text": "Hi" } } }),
       json!({ "method": "item/started", "params": { "item": command } }),
       json!({ "method": "item/completed", "params": { "item": command } }),
+      json!({ "method": "thread/tokenUsage/updated", "params": { "tokenUsage": { "last": { "totalTokens": 42 } } } }),
       json!({ "method": "turn/completed", "params": { "turn": { "status": "completed" } } }),
     ];
     let emitted: Vec<Value> = lines.into_iter().flat_map(|line| adapter.record(line).emit).collect();
     let types: Vec<_> = emitted.iter().map(|record| record["type"].as_str().unwrap()).collect();
-    assert_eq!(types, ["agent_start", "message_start", "message_update", "message_update", "message_end", "message_start", "message_end", "message_start", "message_end", "agent_settled"]);
+    assert_eq!(types, ["agent_start", "message_start", "message_update", "message_update", "message_end", "message_start", "message_end", "message_start", "message_end", "context_usage", "agent_settled"]);
     assert_eq!(emitted[4]["message"]["content"][0]["text"], "Hi");
+    assert_eq!(emitted[9]["tokens"], 42);
     assert_eq!(emitted[6]["message"]["content"][0]["arguments"]["command"], "ls");
     assert_eq!(emitted[8]["message"]["content"][0]["text"], "a");
   }

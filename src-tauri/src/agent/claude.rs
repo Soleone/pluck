@@ -27,6 +27,8 @@ pub struct Adapter {
   /// The reply being streamed, as Pi parts, and the index of the block streaming now.
   parts: Vec<Value>,
   block: usize,
+  /// The streamed reply's usage, in Pi's shape.
+  usage: Value,
   /// What each tool waiting for permission was called with, by request id.
   asked: HashMap<String, Value>,
   /// Stop was clicked, so the run ending early isn't an error.
@@ -58,7 +60,7 @@ impl Adapter {
       let flags = model.flags("--effort");
       args.extend(flags.chunks(2).filter(|flag| flag[1] != "off").flatten().cloned());
     }
-    let adapter = Adapter { session, wsl, state: None, thinking, parts: Vec::new(), block: 0, asked: HashMap::new(), aborted: false };
+    let adapter = Adapter { session, wsl, state: None, thinking, parts: Vec::new(), block: 0, usage: Value::Null, asked: HashMap::new(), aborted: false };
     (adapter, args)
   }
 
@@ -113,6 +115,7 @@ impl Adapter {
       Some("stream_event") => out.emit.extend(self.stream(&record["event"])),
       // One record per finished block, before the stream says the block stopped.
       Some("assistant") => {
+        self.usage = usage(&record["message"]);
         for block in record["message"]["content"].as_array().into_iter().flatten() {
           let part = part(block);
           if part["type"] == "toolCall" {
@@ -178,11 +181,22 @@ impl Adapter {
       }
       Some("message_stop") => {
         let content = std::mem::take(&mut self.parts);
-        vec![json!({ "type": "message_end", "message": { "role": "assistant", "content": content } })]
+        let usage = std::mem::take(&mut self.usage);
+        vec![json!({ "type": "message_end", "message": { "role": "assistant", "content": content, "usage": usage } })]
       }
       _ => Vec::new(),
     }
   }
+}
+
+/// A Messages API usage as Pi's, whose total is what the context holds after the reply.
+fn usage(message: &Value) -> Value {
+  let usage = &message["usage"];
+  if usage.is_null() {
+    return Value::Null;
+  }
+  let fields = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"];
+  json!({ "totalTokens": fields.iter().filter_map(|field| usage[field].as_u64()).sum::<u64>() })
 }
 
 /// One block of an assistant message as a Pi part.
@@ -253,8 +267,11 @@ fn history(transcript: &str) -> Vec<Value> {
       Some("assistant") => {
         let parts = message["content"].as_array().into_iter().flatten().map(part);
         match messages.last_mut() {
-          Some(last) if message["id"] == last_id && !last_id.is_null() => last["content"].as_array_mut().expect("assistant content is a list").extend(parts),
-          _ => messages.push(json!({ "role": "assistant", "content": parts.collect::<Vec<_>>() })),
+          Some(last) if message["id"] == last_id && !last_id.is_null() => {
+            last["content"].as_array_mut().expect("assistant content is a list").extend(parts);
+            last["usage"] = usage(message);
+          }
+          _ => messages.push(json!({ "role": "assistant", "content": parts.collect::<Vec<_>>(), "usage": usage(message) })),
         }
         last_id = message["id"].clone();
       }
@@ -340,7 +357,7 @@ mod tests {
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "Hi" } } }),
         json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": "Hi" }] } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "t", "name": "Read" } } }),
-        json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "id": "t", "name": "Read", "input": { "file_path": "a.md" } }] } }),
+        json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "id": "t", "name": "Read", "input": { "file_path": "a.md" } }], "usage": { "input_tokens": 2, "cache_read_input_tokens": 30, "output_tokens": 5 } } }),
         json!({ "type": "stream_event", "event": { "type": "message_stop" } }),
         json!({ "type": "user", "message": { "content": [{ "type": "tool_result", "tool_use_id": "t", "content": "text" }] } }),
         json!({ "type": "result", "is_error": false }),
@@ -353,6 +370,7 @@ mod tests {
     let content = &emitted[5]["message"]["content"];
     assert_eq!(content[0]["text"], "Hi");
     assert_eq!(content[1]["arguments"]["path"], "a.md");
+    assert_eq!(emitted[5]["message"]["usage"]["totalTokens"], 37);
     assert_eq!(emitted[7]["message"], json!({ "role": "toolResult", "toolCallId": "t", "content": [text("text")], "isError": false }));
   }
 

@@ -40,6 +40,8 @@ export type PiRecord = {
   data?: unknown;
   id?: string;
   method?: string;
+  /** `context_usage`: the context's size, from harnesses that report it apart from replies. */
+  tokens?: number;
 };
 
 /** Pi names a model `provider/id`; other harnesses have no provider and list their own levels. */
@@ -70,6 +72,8 @@ export type Transcript = {
   busy: boolean;
   error?: string;
   model?: { name: string; thinking: string };
+  /** Tokens the context held after the last reply that finished. */
+  contextTokens?: number;
 };
 
 export const emptyTranscript: Transcript = { messages: [], busy: false };
@@ -84,7 +88,13 @@ export function applyRecord(transcript: Transcript, record: PiRecord): Transcrip
     case "message_start":
       return { ...transcript, messages: [...messages, record.message!] };
     case "message_end":
-      return { ...transcript, messages: [...messages.slice(0, -1), record.message!] };
+      return {
+        ...transcript,
+        messages: [...messages.slice(0, -1), record.message!],
+        contextTokens: usageOf([record.message!]) ?? transcript.contextTokens,
+      };
+    case "context_usage":
+      return { ...transcript, contextTokens: record.tokens };
     case "message_update": {
       const last = messages.at(-1);
       if (last?.role !== "assistant") return transcript;
@@ -93,8 +103,10 @@ export function applyRecord(transcript: Transcript, record: PiRecord): Transcrip
     }
     case "response":
       if (!record.success) return { ...transcript, error: record.error };
-      if (record.command === "get_messages")
-        return { ...transcript, messages: (record.data as { messages: PiMessage[] }).messages };
+      if (record.command === "get_messages") {
+        const loaded = (record.data as { messages: PiMessage[] }).messages;
+        return { ...transcript, messages: loaded, contextTokens: usageOf(loaded) };
+      }
       if (record.command === "get_state") {
         const state = record.data as { model?: { name: string }; thinkingLevel: string };
         return state.model
@@ -105,6 +117,18 @@ export function applyRecord(transcript: Transcript, record: PiRecord): Transcrip
     default:
       return transcript;
   }
+}
+
+/** The usage of the last reply that finished, as Pi's footer counts the context. */
+function usageOf(messages: PiMessage[]): number | undefined {
+  const last = messages.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      message.stopReason !== "error" &&
+      message.stopReason !== "aborted" &&
+      message.usage,
+  );
+  return last?.role === "assistant" ? last.usage?.totalTokens : undefined;
 }
 
 /** Builds the streaming reply from Pi's deltas; `message_end` then replaces it with the final one. */
@@ -136,18 +160,6 @@ export function dialogOf(record: PiRecord): PiDialog | null {
   return record.type === "extension_ui_request" && dialogs.includes(record.method ?? "")
     ? (record as unknown as PiDialog)
     : null;
-}
-
-/** Tokens the context held after the last reply that finished, as Pi's footer counts them. */
-export function contextTokens({ messages }: Transcript): number | undefined {
-  const last = messages.findLast(
-    (message) =>
-      message.role === "assistant" &&
-      message.stopReason !== "error" &&
-      message.stopReason !== "aborted" &&
-      message.usage,
-  );
-  return last?.role === "assistant" ? last.usage?.totalTokens : undefined;
 }
 
 export function agentMessages({ messages, busy }: Transcript): AgentMessage[] {
