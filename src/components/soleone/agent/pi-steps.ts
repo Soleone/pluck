@@ -1,3 +1,4 @@
+// Types only, so a server can import this file without the UI.
 import type { AgentSource, AgentTool } from "./agent-panel"
 
 type Status = AgentTool["status"]
@@ -41,6 +42,10 @@ export const piSteps: Record<string, PiStep> = {
   grep: { verbs: { running: "Searching for", complete: "Searched for", error: "Failed to search for" }, input: text("pattern") },
   find: { verbs: { running: "Finding", complete: "Found", error: "Failed to find" }, input: text("pattern") },
   ls: { verbs: { running: "Listing", complete: "Listed", error: "Failed to list" }, input: text("path") },
+  ask_user: {
+    verbs: { running: "Asking", complete: "Asked", error: "Failed to ask" },
+    subject: (args) => (typeof args.question === "string" ? args.question : "how to continue"),
+  },
   web_search: {
     verbs: { running: "Searching", complete: "Searched", error: "Failed to search" },
     input: (args) => lines(queriesOf(args)),

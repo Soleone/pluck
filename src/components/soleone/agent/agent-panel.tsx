@@ -1,11 +1,12 @@
 import { memo, useId, useState, type ClipboardEvent, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench, X } from "lucide-react"
+import { ArrowUp, Brain, CornerDownLeft, Globe, Layers, LoaderCircle, Square, TextQuote, Wrench, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
+import { Kbd } from "@/components/ui/kbd"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import {
   InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea,
@@ -21,6 +22,8 @@ import {
   Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
   TraceIcon, TraceLine, TraceTitle,
 } from "@/components/ui/trace"
+import { askUser } from "./ask-user"
+import { QuestionCard, questionOf } from "./agent-question"
 
 export type AgentTool = {
   id: string
@@ -30,6 +33,8 @@ export type AgentTool = {
   status: "running" | "complete" | "error"
   /** The full call, like the whole command, shown when the step opens since the title may cut it short. */
   input?: string
+  /** The call's arguments as the model sent them. The panel reads an `ask_user` question from them. */
+  arguments?: Record<string, unknown>
   output?: string
   /** Web pages the step searched or read, shown as site chips under its title. */
   sources?: AgentSource[]
@@ -91,6 +96,8 @@ type AgentPanelProps = {
   model?: { name: string; thinking: string }
   /** Opens from the model badge, for example AgentModelFields. */
   modelPicker?: ReactNode
+  /** Tokens the session's context holds now, shown in thousands under the composer. */
+  contextTokens?: number
 }
 
 type AgentTurn = { id: string; role: AgentMessage["role"]; messages: AgentMessage[] }
@@ -306,8 +313,10 @@ const AssistantText = memo(function AssistantText({ text, references }: { text: 
 })
 
 /** Controlled UI only. The host owns transport, credentials, tools, and approval policy. */
+const compact = new Intl.NumberFormat("en", { notation: "compact" })
+
 export function AgentPanel({
-  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model, modelPicker, suggestions,
+  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model, modelPicker, contextTokens, suggestions,
   acceptImages = false, references,
   placeholder = "Ask the agent…",
   emptyTitle = "What would you like to do?",
@@ -320,15 +329,15 @@ export function AgentPanel({
   const promptId = useId()
   const working = busy || sending
 
-  async function send() {
-    const text = prompt.trim()
-    if ((!text && images.length === 0) || working || disabled) return
+  // Answers to ask_user send without the composer's draft.
+  async function send(text = prompt.trim(), sent = images) {
+    if ((!text && sent.length === 0) || working || disabled) return
     setSending(true)
     setSubmissionError("")
     try {
-      if (await onSend(text, images)) {
+      if (await onSend(text, sent)) {
         onPromptChange((current) => current.trim() === text ? "" : current)
-        setImages((current) => current.filter((image) => !images.includes(image)))
+        setImages((current) => current.filter((image) => !sent.includes(image)))
       }
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : "Could not send. Please try again.")
@@ -344,6 +353,17 @@ export function AgentPanel({
     Promise.all(files.map(readImage)).then(
       (pasted) => setImages((current) => [...current, ...pasted]),
       () => setSubmissionError("Could not read the pasted image."),
+    )
+  }
+
+  const turns = turnsOf(messages)
+  // A question is answered once any message follows its turn.
+  const renderStep = (answered: boolean) => (tool: AgentTool) => {
+    const custom = renderTool?.(tool)
+    if (custom != null) return custom
+    const question = tool.name === askUser.name && tool.status === "complete" ? questionOf(tool.arguments) : undefined
+    return question && (
+      <QuestionCard question={question} locked={answered || working || disabled} onAnswer={(text) => void send(text, [])} />
     )
   }
 
@@ -378,7 +398,7 @@ export function AgentPanel({
                       )}
                     </Empty>
                   </MessageScrollerItem>
-                ) : turnsOf(messages).map((turn) => (
+                ) : turns.map((turn, index) => (
                   <MessageScrollerItem key={turn.id} messageId={turn.id} scrollAnchor={turn.role === "user"}>
                     <Message align={turn.role === "user" ? "end" : "start"}>
                       <MessageContent>
@@ -396,8 +416,8 @@ export function AgentPanel({
                           </div>
                         ) : (
                           <div className="flex min-w-0 flex-col gap-3">
-                            {blocksOf(turn.messages, renderTool).map((block, index) =>
-                              block.type === "text" ? <AssistantText key={index} text={block.text} references={references} />
+                            {blocksOf(turn.messages, renderStep(index < turns.length - 1)).map((block, blockIndex) =>
+                              block.type === "text" ? <AssistantText key={blockIndex} text={block.text} references={references} />
                               : block.type === "steps" ? (
                                 <Trace key={block.tools[0].id}>
                                   {block.tools.map((tool) => <ToolStep key={tool.id} tool={tool} />)}
@@ -475,25 +495,42 @@ export function AgentPanel({
           </InputGroupAddon>
         </InputGroup>
       </form>
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <p role="status" className="truncate text-xs text-muted-foreground">
-          {working ? "Agent working. You can stop it at any time." : "Enter to send. Shift+Enter for a new line."}
+      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <p role="status" className="flex shrink-0 items-center gap-1.5">
+          {working ? (
+            <><LoaderCircle className="size-3.5 animate-spin" aria-hidden />Working</>
+          ) : (
+            <>
+              <Kbd aria-label="Enter"><CornerDownLeft /></Kbd>send
+              <Kbd aria-label="Shift Enter" className="ml-1">⇧<CornerDownLeft /></Kbd>line
+            </>
+          )}
         </p>
-        {modelPicker ? (
-          <Popover>
-            <PopoverTrigger render={<Button variant="secondary" size="xs" aria-label="Change model" />}>
-              <Brain data-icon="inline-start" />{model ? `${model.name} · ${model.thinking}` : "Model"}
-            </PopoverTrigger>
-            <PopoverContent side="top" align="end" className="w-80">{modelPicker}</PopoverContent>
-          </Popover>
-        ) : model && (
-          <Tooltip>
-            <TooltipTrigger render={<Badge variant="secondary" />}>
-              <Brain />{model.name} · {model.thinking}
-            </TooltipTrigger>
-            <TooltipContent>Model {model.name}, thinking {model.thinking}</TooltipContent>
-          </Tooltip>
-        )}
+        <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          {contextTokens !== undefined && (
+            <Tooltip>
+              <TooltipTrigger render={<Badge variant="outline" className="shrink-0" />}>
+                <Layers />{compact.format(contextTokens)}
+              </TooltipTrigger>
+              <TooltipContent>Context {contextTokens.toLocaleString()} tokens</TooltipContent>
+            </Tooltip>
+          )}
+          {modelPicker ? (
+            <Popover>
+              <PopoverTrigger render={<Button variant="secondary" size="xs" className="min-w-0" aria-label="Change model" />}>
+                <Brain data-icon="inline-start" /><span className="truncate">{model ? `${model.name} · ${model.thinking}` : "Model"}</span>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-80">{modelPicker}</PopoverContent>
+            </Popover>
+          ) : model && (
+            <Tooltip>
+              <TooltipTrigger render={<Badge variant="secondary" className="min-w-0" />}>
+                <Brain /><span className="truncate">{model.name} · {model.thinking}</span>
+              </TooltipTrigger>
+              <TooltipContent>Model {model.name}, thinking {model.thinking}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </section>
   )
