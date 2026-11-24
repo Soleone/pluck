@@ -61,6 +61,8 @@ pub struct Action {
   pub id: String,
   pub name: String,
   pub key: Option<String>,
+  /// The menu folder it sits in, `/` between levels, as in `Save/Read later`. Unset is the top level.
+  pub folder: Option<String>,
   #[serde(default)]
   pub run: String,
   pub agent: Option<String>,
@@ -115,6 +117,7 @@ pub fn load(dir: &Path) -> Config {
         config.problems.push(format!("pluck.toml, action {}: only `agent` actions can open a session", index + 1));
       }
       Ok(mut action) => {
+        action.folder = action.folder.as_deref().and_then(folder_path);
         if action.agent.is_some() && entry.get("output").is_none() {
           // `interactive = false` asked for a reply in the menu before prompts had an output.
           let one_off = entry.get("interactive").and_then(toml::Value::as_bool) == Some(false);
@@ -157,6 +160,7 @@ pub fn save_actions(dir: &Path, actions: &[Action]) -> Result<(), String> {
     set(&mut table, "id", Some(&action.id));
     set(&mut table, "name", Some(&action.name));
     set(&mut table, "key", action.key.as_deref());
+    set(&mut table, "folder", action.folder.as_deref());
     set(&mut table, "run", Some(action.run.as_str()).filter(|_| script));
     set(&mut table, "agent", action.agent.as_deref());
     let default = if script { Output::Notify } else { Output::Session };
@@ -171,6 +175,12 @@ pub fn save_actions(dir: &Path, actions: &[Action]) -> Result<(), String> {
   }
   document.insert("action", Item::ArrayOfTables(tables));
   fs::write(path, document.to_string()).map_err(|error| error.to_string())
+}
+
+/// `folder` with each level trimmed and empty ones dropped, or `None` for the top level.
+fn folder_path(folder: &str) -> Option<String> {
+  let levels: Vec<_> = folder.split('/').map(str::trim).filter(|level| !level.is_empty()).collect();
+  (!levels.is_empty()).then(|| levels.join("/"))
 }
 
 /// Leaves an unchanged value alone, so its quoting survives.
@@ -248,7 +258,7 @@ mod tests {
   use super::*;
 
   fn prompt(id: &str, text: &str) -> Action {
-    Action { id: id.into(), name: id.into(), key: Some(id.into()), run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None, env: BTreeMap::new() }
+    Action { id: id.into(), name: id.into(), key: Some(id.into()), folder: None, run: String::new(), agent: Some(text.into()), output: Output::Session, model: None, thinking: None, env: BTreeMap::new() }
   }
 
   fn dir_with(name: &str, toml: &str) -> std::path::PathBuf {
@@ -342,6 +352,18 @@ mod tests {
     assert_eq!(load(&dir).actions[0].env.get("VOICE").map(String::as_str), Some("af_heart"));
   }
 
+
+  #[test]
+  // action.folder
+  fn folder_loads_tidied_and_saves() {
+    let dir = dir_with("folder", "[[action]]\nid = \"a\"\nname = \"A\"\nrun = \"a\"\nfolder = \" Save / /Read later \"\n\n[[action]]\nid = \"b\"\nname = \"B\"\nrun = \"b\"\nfolder = \" / \"\n");
+    let mut actions = load(&dir).actions;
+    assert_eq!(actions.iter().map(|action| action.folder.clone()).collect::<Vec<_>>(), [Some("Save/Read later".into()), None]);
+    actions[1].folder = Some("Text".into());
+    actions[0].folder = None;
+    save_actions(&dir, &actions).unwrap();
+    assert_eq!(load(&dir).actions.into_iter().map(|action| action.folder).collect::<Vec<_>>(), [None, Some("Text".into())]);
+  }
 
   #[test]
   // actions-tab.edit

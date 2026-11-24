@@ -8,6 +8,8 @@ export type Action = {
   id: string;
   name: string;
   key: string | null;
+  /** The menu folder it sits in, `/` between levels; null at the top level. */
+  folder: string | null;
   run: string;
   /** Set on actions that send this prompt to the agent instead of running a script. */
   agent: string | null;
@@ -218,10 +220,12 @@ const scriptAction = (
   name: string,
   key: string,
   output: Action["output"] = "notify",
+  folder: string | null = null,
 ) => ({
   id,
   name,
   key,
+  folder,
   run: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/${id}.ps1`,
   agent: null,
   output,
@@ -232,6 +236,7 @@ const promptAction = (id: string, name: string, key: string, agent: string): Act
   id,
   name,
   key,
+  folder: null,
   run: "",
   agent,
   output: "session",
@@ -251,11 +256,15 @@ const sample: Opened = {
       output: "show",
       thinking: "off",
     },
-    scriptAction("translate", "Translate to English", "t"),
+    scriptAction("translate", "English", "e", "notify", "Translate"),
+    {
+      ...scriptAction("translate-ja", "Japanese", "j", "notify", "Translate"),
+      run: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/translate.ps1 ja",
+    },
     scriptAction("search", "Search the web", "s"),
-    scriptAction("bookmark", "Save as bookmark", "b"),
-    scriptAction("count", "Count words", "w", "show"),
-    scriptAction("upper", "Uppercase", "u", "replace"),
+    scriptAction("bookmark", "Bookmark", "b", "notify", "Save"),
+    scriptAction("count", "Count words", "w", "show", "Text"),
+    scriptAction("upper", "Uppercase", "u", "replace", "Text"),
     { ...scriptAction("read", "Read aloud", "r", "none"), run: "yap --source-env PLUCK" },
   ],
   problems: [],
@@ -265,6 +274,7 @@ const sample: Opened = {
 /** What the sample's background actions end with, and how long they take in ms. */
 const backgroundResults: Record<string, [string, number]> = {
   translate: ["Opened Google Translate", 900],
+  "translate-ja": ["Opened Google Translate", 900],
   search: ["Opened the search", 700],
   bookmark: ["Saved to bookmarks", 1200],
 };

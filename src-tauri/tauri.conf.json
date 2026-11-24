@@ -30,7 +30,8 @@
         "height": 720,
         "minWidth": 560,
         "minHeight": 420,
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       },
       {
         "label": "agents",

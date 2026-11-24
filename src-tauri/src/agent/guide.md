@@ -10,18 +10,19 @@ Pluck shows a small menu at the cursor when the user presses its hotkey with tex
 [[action]]
 id = "count" # stable and unique, lowercase
 name = "Count words" # what the menu shows
-key = "w" # optional: one key no other action uses, runs it from the menu
+key = "w" # optional: one key no other action in its folder uses, runs it from the menu
 run = 'bash scripts/count.sh' # a script action: a command line
 output = "show"
 ```
 
-| Field               | Meaning                                                                                                    |
-| ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `run`               | A command line, run in this folder. Use single quotes so backslashes stay as they are                      |
-| `agent`             | Instead of `run`: a prompt, sent to the agent followed by the text and where it came from                  |
-| `output`            | What happens with the script's stdout or the agent's reply, see below                                      |
-| `env`               | Script actions: extra variables, `env = { LANGUAGE = "de" }`. Put a script's settings here                 |
-| `model`, `thinking` | Agent actions: the model and thinking level to use instead of the ones in Settings. Leave out unless asked |
+| Field               | Meaning                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `folder`            | Optional: the menu folder it sits in, `/` between levels (`"Save/Read later"`). Its key need only be free there |
+| `run`               | A command line, run in this folder. Use single quotes so backslashes stay as they are                           |
+| `agent`             | Instead of `run`: a prompt, sent to the agent followed by the text and where it came from                       |
+| `output`            | What happens with the script's stdout or the agent's reply, see below                                           |
+| `env`               | Script actions: extra variables, `env = { LANGUAGE = "de" }`. Put a script's settings here                      |
+| `model`, `thinking` | Agent actions: the model and thinking level to use instead of the ones in Settings. Leave out unless asked      |
 
 An entry needs `id`, `name` and one of `run` or `agent`. An entry that breaks a rule is left out of the menu, which then shows one line naming the problem, as does Pluck's home window.
 

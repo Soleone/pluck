@@ -1,21 +1,43 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
   Bot,
+  ChevronDown,
+  ChevronRight,
+  CornerLeftUp,
   Ellipsis,
   FileCode,
+  Folder,
   FolderOpen,
+  FolderPlus,
+  GripVertical,
+  Pencil,
   Plus,
   Sparkles,
   SquareTerminal,
   Terminal,
+  Ungroup,
 } from "lucide-react";
 import { cn } from "cn";
 import { bridge, type Action, type AgentSettings, type HomeState } from "@/bridge";
 import { ActionIcon, OUTPUT_ICONS } from "@/ActionIcon";
 import { ChoiceTiles } from "@/ChoiceTiles";
-import { newId, suggestKey } from "@/menuActions";
+import { ChoiceField } from "@/ChoiceField";
+import {
+  countActions,
+  entryId,
+  folderPath,
+  folderPaths,
+  menuTree,
+  moveEntry,
+  moveEntryTo,
+  newId,
+  renameFolder,
+  suggestKey,
+  ungroup,
+  type Entry,
+} from "@/menuActions";
 import { ModelPicker, effectiveModel, loaded, harnessStart, type Catalog } from "@/ModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +49,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { CodeInput } from "@/components/variants/CodeInput";
@@ -51,6 +80,13 @@ const KINDS = [
   { value: "prompt", label: "Prompt", icon: Sparkles, hint: "The agent gets the text" },
   { value: "script", label: "Script", icon: SquareTerminal, hint: "Your command gets the text" },
 ];
+/** The Folder field's choices besides the folders themselves; no folder path can be either. */
+const TOP_LEVEL = "/";
+const NEW_FOLDER = "/new";
+
+/** Where a dragged row lands, relative to the row it's over. */
+type Drop = { id: string; place: "before" | "after" | "into" };
+
 const SCRIPT_INPUTS = [
   { what: "The selected text", names: ["stdin", "PLUCK_TEXT"] },
   { what: "Where it came from", names: ["PLUCK_APP", "PLUCK_TITLE", "PLUCK_URL"] },
@@ -70,7 +106,16 @@ export function ActionList({
    * none while closed. */
   const [editing, setEditing] = useState<Action | "new" | "describe" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Folders closed in this list, by entry id; the menu is unaffected. */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** The folder being renamed, or the entry being moved into a new folder. */
+  const [naming, setNaming] = useState<
+    { rename: string[] } | { move: string; parent: string[] } | null
+  >(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [drop, setDrop] = useState<Drop | null>(null);
   const actions = state.actions;
+  const folders = folderPaths(actions);
 
   async function save(next: Action[]) {
     await bridge.saveActions(next);
@@ -78,10 +123,227 @@ export function ActionList({
     onChange(next);
   }
 
-  function move(index: number, by: number) {
-    const next = [...actions];
-    next.splice(index + by, 0, ...next.splice(index, 1));
-    save(next).catch((caught: unknown) => setProblem(String(caught)));
+  function change(next: Action[]) {
+    if (next !== actions) save(next).catch((caught: unknown) => setProblem(String(caught)));
+  }
+
+  function dragOver(event: DragEvent<HTMLElement>, entry: Entry) {
+    const id = entryId(entry);
+    if (!dragging || dragging === id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const box = event.currentTarget.getBoundingClientRect();
+    const share = (event.clientY - box.top) / box.height;
+    const place =
+      entry.kind === "folder"
+        ? share < 0.3
+          ? "before"
+          : "into"
+        : share < 0.5
+          ? "before"
+          : "after";
+    if (drop?.id !== id || drop.place !== place) setDrop({ id, place });
+  }
+
+  function dropOn(event: DragEvent<HTMLElement>, entry: Entry) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (dragging && drop)
+      change(
+        moveEntryTo(
+          actions,
+          dragging,
+          drop.place === "into" && entry.kind === "folder"
+            ? { into: entry.path }
+            : { beside: drop.id, after: drop.place === "after" },
+        ),
+      );
+    setDragging(null);
+    setDrop(null);
+  }
+
+  /** What makes a row a place to drop on. */
+  function rowProps(entry: Entry) {
+    const id = entryId(entry);
+    return {
+      "data-drop": drop?.id === id ? drop.place : undefined,
+      onDragOver: (event: DragEvent<HTMLElement>) => dragOver(event, entry),
+      onDrop: (event: DragEvent<HTMLElement>) => dropOn(event, entry),
+    };
+  }
+
+  function dragProps(entry: Entry) {
+    const id = entryId(entry);
+    return {
+      draggable: true,
+      "data-dragging": dragging === id || undefined,
+      onDragStart: (event: DragEvent<HTMLElement>) => {
+        event.stopPropagation();
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", id);
+        setDragging(id);
+      },
+      onDragEnd: () => {
+        setDragging(null);
+        setDrop(null);
+      },
+    };
+  }
+
+  function rowTools(entry: Entry, siblings: Entry[], parent: string[]) {
+    const id = entryId(entry);
+    const index = siblings.indexOf(entry);
+    const own = entry.kind === "folder" ? entry.path.join("/") : null;
+    const targets = folders.filter(
+      (folder) => own === null || (folder !== own && !folder.startsWith(`${own}/`)),
+    );
+    const name = entry.kind === "folder" ? entry.name : entry.action.name;
+    return (
+      <span className="flex opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Move ${name} up`}
+          disabled={index === 0}
+          onClick={() => change(moveEntry(actions, id, -1))}
+        >
+          <ArrowUp />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Move ${name} down`}
+          disabled={index === siblings.length - 1}
+          onClick={() => change(moveEntry(actions, id, 1))}
+        >
+          <ArrowDown />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-sm" aria-label={`More for ${name}`} />}
+          >
+            <Ellipsis />
+          </DropdownMenuTrigger>
+          <MenuContent align="end">
+            {entry.kind === "folder" && (
+              <>
+                <DropdownMenuItem onClick={() => setNaming({ rename: entry.path })}>
+                  <Pencil />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => change(ungroup(actions, entry.path))}>
+                  <Ungroup />
+                  Ungroup
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Move to</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={parent.length === 0}
+                onClick={() => change(moveEntryTo(actions, id, { into: [] }))}
+              >
+                <CornerLeftUp />
+                Top level
+              </DropdownMenuItem>
+              {targets.map((folder) => (
+                <DropdownMenuItem
+                  key={folder}
+                  disabled={folder === parent.join("/")}
+                  onClick={() => change(moveEntryTo(actions, id, { into: folder.split("/") }))}
+                >
+                  <Folder />
+                  {folder.split("/").join(" › ")}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem onClick={() => setNaming({ move: id, parent })}>
+                <FolderPlus />
+                New folder…
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </MenuContent>
+        </DropdownMenu>
+      </span>
+    );
+  }
+
+  function rows(entries: Entry[], parent: string[]): ReactNode {
+    return entries.map((entry) => {
+      const id = entryId(entry);
+      if (entry.kind === "folder") {
+        const open = !collapsed.has(id);
+        const Toggle = open ? ChevronDown : ChevronRight;
+        return (
+          <li key={id} className="flex flex-col" {...dragProps(entry)}>
+            <div className="group/row flex items-center gap-3 px-3 py-2" {...rowProps(entry)}>
+              <GripVertical
+                aria-hidden
+                className="size-4 shrink-0 cursor-grab text-muted-foreground"
+              />
+              <span className="flex w-6 justify-center">
+                {entry.key && <Kbd>{entry.key.toUpperCase()}</Kbd>}
+              </span>
+              <button
+                type="button"
+                aria-expanded={open}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left font-medium"
+                onClick={() => {
+                  const next = new Set(collapsed);
+                  if (open) next.add(id);
+                  else next.delete(id);
+                  setCollapsed(next);
+                }}
+              >
+                <Toggle aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                <Folder aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{entry.name}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {countActions(entry)}
+                </span>
+              </button>
+              {rowTools(entry, entries, parent)}
+            </div>
+            {open && (
+              <ul className="ml-9 flex flex-col divide-y border-t border-l">
+                {rows(entry.entries, entry.path)}
+              </ul>
+            )}
+          </li>
+        );
+      }
+      const { action } = entry;
+      return (
+        <li
+          key={id}
+          className="group/row flex items-center gap-3 px-3 py-2"
+          {...dragProps(entry)}
+          {...rowProps(entry)}
+        >
+          <GripVertical aria-hidden className="size-4 shrink-0 cursor-grab text-muted-foreground" />
+          <span className="flex w-6 justify-center">
+            {action.key && <Kbd>{action.key.toUpperCase()}</Kbd>}
+          </span>
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 flex-col items-start text-left"
+            onClick={() => setEditing(action)}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <ActionIcon action={action} />
+              {action.name}
+            </span>
+            {action.agent ? (
+              <span className="w-full truncate text-xs text-muted-foreground">{action.agent}</span>
+            ) : (
+              <code className="w-full truncate text-xs text-muted-foreground">{action.run}</code>
+            )}
+          </button>
+          <Badge variant="secondary">{action.agent ? "prompt" : action.output}</Badge>
+          {rowTools(entry, entries, parent)}
+        </li>
+      );
+    });
   }
 
   return (
@@ -112,53 +374,21 @@ export function ActionList({
           {line}
         </p>
       ))}
-      <ul className="flex flex-col divide-y rounded-lg border">
-        {actions.map((action, index) => (
-          <li key={action.id} className="group flex items-center gap-3 px-3 py-2">
-            <span className="flex w-6 justify-center">
-              {action.key && <Kbd>{action.key.toUpperCase()}</Kbd>}
-            </span>
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 flex-col items-start text-left"
-              onClick={() => setEditing(action)}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <ActionIcon action={action} />
-                {action.name}
-              </span>
-              {action.agent ? (
-                <span className="w-full truncate text-xs text-muted-foreground">
-                  {action.agent}
-                </span>
-              ) : (
-                <code className="w-full truncate text-xs text-muted-foreground">{action.run}</code>
-              )}
-            </button>
-            <Badge variant="secondary">{action.agent ? "prompt" : action.output}</Badge>
-            <span className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Move ${action.name} up`}
-                disabled={index === 0}
-                onClick={() => move(index, -1)}
-              >
-                <ArrowUp />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Move ${action.name} down`}
-                disabled={index === actions.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                <ArrowDown />
-              </Button>
-            </span>
-          </li>
-        ))}
-      </ul>
+      <ul className="flex flex-col divide-y rounded-lg border">{rows(menuTree(actions), [])}</ul>
+      {naming && (
+        <FolderNameDialog
+          initial={"rename" in naming ? (naming.rename.at(-1) ?? "") : ""}
+          renaming={"rename" in naming}
+          onClose={() => setNaming(null)}
+          onSave={(name) =>
+            save(
+              "rename" in naming
+                ? renameFolder(actions, naming.rename, name)
+                : moveEntryTo(actions, naming.move, { into: [...naming.parent, name] }),
+            )
+          }
+        />
+      )}
       {editing === "describe" && <DescribeDialog onClose={() => setEditing(null)} />}
       {editing && editing !== "describe" && (
         <ActionDialog
@@ -167,13 +397,17 @@ export function ActionList({
           agent={state.agent}
           catalog={catalog}
           onClose={() => setEditing(null)}
-          onSave={(saved) =>
-            save(
+          onSave={(saved) => {
+            const replace = (list: Action[]) =>
+              list.map((action) => (action.id === saved.id ? saved : action));
+            return save(
               editing === "new"
                 ? [...actions, saved]
-                : actions.map((action) => (action.id === editing.id ? saved : action)),
-            )
-          }
+                : saved.folder === editing.folder
+                  ? replace(actions)
+                  : replace(moveEntryTo(actions, saved.id, { into: folderPath(saved) })),
+            );
+          }}
           onDelete={
             editing === "new"
               ? undefined
@@ -207,7 +441,14 @@ function ActionDialog({
   onDescribe?: () => void;
 }) {
   // By id: the window reloads the actions on focus, so the objects change while the dialog is open.
-  const others = actions.filter((other) => other.id !== action?.id);
+  const [folder, setFolder] = useState(action?.folder ?? TOP_LEVEL);
+  const [newFolder, setNewFolder] = useState("");
+  const chosenFolder =
+    folder === NEW_FOLDER ? newFolder.trim() || null : folder === TOP_LEVEL ? null : folder;
+  // Keys only need to be free among the actions in the same folder.
+  const others = actions.filter(
+    (other) => other.id !== action?.id && other.folder === chosenFolder,
+  );
   const [kind, setKind] = useState(action && !action.agent ? "script" : "prompt");
   const [name, setName] = useState(action?.name ?? "");
   /** Follows the name until it's typed, so a new action gets a free key on its own. */
@@ -227,14 +468,23 @@ function ActionDialog({
   const [checked, setChecked] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const shownKey = key ?? suggestKey(name, others);
+  const shownKey =
+    key ??
+    suggestKey(
+      name,
+      others.map((other) => other.key),
+    );
   const keyOwner = shownKey
     ? others.find((other) => other.key?.toLowerCase() === shownKey.toLowerCase())
     : undefined;
   const body = kind === "prompt" ? prompt : run;
   const known = loaded(catalog);
   const settingsModel = known ? effectiveModel(known, agent, harnessStart(known)) : {};
-  const valid = name.trim() !== "" && body.trim() !== "" && !keyOwner;
+  const valid =
+    name.trim() !== "" &&
+    body.trim() !== "" &&
+    !keyOwner &&
+    (folder !== NEW_FOLDER || chosenFolder !== null);
 
   const outputs = kind === "prompt" ? PROMPT_OUTPUTS : OUTPUTS;
   const output = kind === "prompt" ? promptOutput : scriptOutput;
@@ -249,6 +499,7 @@ function ActionDialog({
       id: action?.id ?? newId(trimmed, actions),
       name: trimmed,
       key: shownKey.toLowerCase() || null,
+      folder: chosenFolder,
       run: kind === "script" ? run.trim() : "",
       agent: kind === "prompt" ? prompt.trim() : null,
       output,
@@ -272,6 +523,7 @@ function ActionDialog({
             <DialogTitle>{action ? `Edit ${action.name}` : "New action"}</DialogTitle>
             <DialogDescription>How it shows in the menu:</DialogDescription>
             <MenuPreview
+              folder={chosenFolder}
               name={name.trim()}
               shortcut={shownKey}
               agent={kind === "prompt"}
@@ -279,7 +531,7 @@ function ActionDialog({
             />
           </DialogHeader>
           <ChoiceTiles label="Kind" value={kind} options={KINDS} onChange={setKind} />
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-6 gap-3">
             <Field className="col-span-3" data-invalid={checked && !name.trim()}>
               <FieldLabel htmlFor="action-name">Name</FieldLabel>
               <Input
@@ -299,10 +551,39 @@ function ActionDialog({
                 onChange={(event) => setKey(event.target.value.trim())}
               />
             </Field>
+            <div className="col-span-2">
+              <ChoiceField
+                id="action-folder"
+                label="Folder"
+                value={folder}
+                options={[
+                  { value: TOP_LEVEL, label: "Top level" },
+                  ...folderPaths(actions).map((path) => ({
+                    value: path,
+                    label: path.split("/").join(" › "),
+                  })),
+                  { value: NEW_FOLDER, label: "New folder…" },
+                ]}
+                onChange={setFolder}
+              />
+            </div>
+            {folder === NEW_FOLDER && (
+              <Field className="col-span-6" data-invalid={checked && chosenFolder === null}>
+                <FieldLabel htmlFor="action-new-folder">New folder</FieldLabel>
+                <Input
+                  id="action-new-folder"
+                  autoFocus
+                  placeholder="Translate"
+                  value={newFolder}
+                  onChange={(event) => setNewFolder(event.target.value)}
+                />
+              </Field>
+            )}
           </div>
           {keyOwner && (
             <FieldError>
-              {shownKey.toUpperCase()} already runs {keyOwner.name}.
+              {shownKey.toUpperCase()} already runs {keyOwner.name}
+              {chosenFolder ? ` in ${chosenFolder.split("/").join(" › ")}` : ""}.
             </FieldError>
           )}
           {/* Both kinds share one grid cell, so switching keeps the dialog's size. */}
@@ -461,6 +742,58 @@ function DescribeDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Names a new folder, or renames one. */
+function FolderNameDialog({
+  initial,
+  renaming,
+  onClose,
+  onSave,
+}: {
+  initial: string;
+  renaming: boolean;
+  onClose: () => void;
+  onSave: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    onSave(name.trim()).then(onClose, (caught: unknown) => setProblem(String(caught)));
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>{renaming ? `Rename ${initial}` : "New folder"}</DialogTitle>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="folder-name">Name</FieldLabel>
+            <Input
+              id="folder-name"
+              autoFocus
+              placeholder="Translate"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          {problem && <FieldError>{problem}</FieldError>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || name.includes("/")}>
+              {renaming ? "Rename" : "Create"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** One kind's fields. A hidden one keeps its place, so both kinds take the height of the taller. */
 function KindPane({ shown, children }: { shown: boolean; children: ReactNode }) {
   return (
@@ -478,11 +811,13 @@ function KindPane({ shown, children }: { shown: boolean; children: ReactNode }) 
 
 /** The action as a row of the menu, updating while it's edited. */
 function MenuPreview({
+  folder,
   name,
   shortcut,
   agent,
   output,
 }: {
+  folder: string | null;
   name: string;
   shortcut: string;
   agent: boolean;
@@ -492,6 +827,9 @@ function MenuPreview({
     <div className="flex items-center gap-2 rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-sm">
       <ActionIcon action={{ agent: agent ? "prompt" : null, output }} />
       <span className={cn("flex-1 truncate", !name && "text-muted-foreground")}>
+        {folder && (
+          <span className="text-muted-foreground">{folder.split("/").join(" › ")} › </span>
+        )}
         {name || "Untitled"}
       </span>
       {shortcut && <Kbd>{shortcut.toUpperCase()}</Kbd>}

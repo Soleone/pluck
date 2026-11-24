@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { CircleCheck, Sparkles } from "lucide-react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronRight, CircleCheck, Folder as FolderIcon, Sparkles } from "lucide-react";
 import { ActionIcon } from "@/ActionIcon";
 import { ago } from "@/agent/ago";
 import { bridge, type Action, type Opened } from "@/bridge";
@@ -11,6 +11,16 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
+import {
+  countActions,
+  entriesAt,
+  entryId,
+  folderPath,
+  menuTree,
+  type Entry,
+  type Folder,
+} from "@/menuActions";
+import { play, snapshot, stop, type Shot } from "@/menuMotion";
 
 /** `picked` while the typed question is being asked. */
 const ASK = "pluck:ask";
@@ -28,6 +38,9 @@ const runsInBackground = (action: Action) =>
 
 type Result = { action: Action; run: number; text: string; done: boolean; error: string | null };
 
+/** `data-flight` of the path's last folder, where an opened folder's name flies to. */
+const PATH = "path";
+
 /** The menu that opens on the hotkey, and the panel a `show` or `replace` action streams into. */
 export function Popup() {
   const [opened, setOpened] = useState<Opened | null>(null);
@@ -41,8 +54,16 @@ export function Popup() {
   const [picked, setPicked] = useState<string | null>(null);
   /** A `copy`, `notify`, `progress` or `none` action, confirmed for a moment before the menu closes. */
   const [started, setStarted] = useState<Action | null>(null);
+  /** The folders opened, outermost first. */
+  const [path, setPath] = useState<string[]>([]);
+  /** The highlighted row's value, so going up a level can highlight the folder it left. */
+  const [selected, setSelected] = useState("");
+  /** Moving between folders or filtering has happened since the menu opened; rows stop arriving. */
+  const [navigated, setNavigated] = useState(false);
   const runCount = useRef(0);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const motion = useRef<{ shot: Shot; flightTo: string | null } | null>(null);
 
   useEffect(
     () =>
@@ -55,6 +76,10 @@ export function Popup() {
         setContinueLast(false);
         setPicked(null);
         setStarted(null);
+        setPath([]);
+        setSelected("");
+        setNavigated(false);
+        stop();
       }),
     [],
   );
@@ -86,6 +111,12 @@ export function Popup() {
       window.removeEventListener("focus", focusInput);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const pending = motion.current;
+    motion.current = null;
+    if (pending && list.current) play(pending.shot, list.current, pending.flightTo);
+  }, [path, query]);
 
   /** A finished `replace` result goes in on Enter. */
   const replacement =
@@ -128,6 +159,42 @@ export function Popup() {
     });
   }
 
+  /** Changes what the list shows, moving its rows from where they stood (`menu.folder-push`). */
+  function change(
+    update: () => void,
+    flightFrom: string | null = null,
+    flightTo: string | null = null,
+  ) {
+    const shot = list.current && snapshot(list.current, flightFrom);
+    motion.current = shot ? { shot, flightTo } : null;
+    setNavigated(true);
+    update();
+  }
+
+  function open(folder: Folder) {
+    const id = entryId(folder);
+    change(
+      () => {
+        setPath(folder.path);
+        setSelected(folder.entries[0] ? entryId(folder.entries[0]) : "");
+      },
+      id,
+      PATH,
+    );
+  }
+
+  function up() {
+    const id = `folder:${path.join("/")}`;
+    change(
+      () => {
+        setPath(path.slice(0, -1));
+        setSelected(id);
+      },
+      PATH,
+      id,
+    );
+  }
+
   function ask() {
     pick(ASK, () => void bridge.ask(query.trim(), continuing).catch(fail));
   }
@@ -138,14 +205,23 @@ export function Popup() {
       setContinueLast(!continueLast);
       return;
     }
-    if (!opened || event.currentTarget.value || event.ctrlKey || event.altKey || event.metaKey)
-      return;
-    const action = opened.actions.find(
-      (candidate) => candidate.key?.toLowerCase() === event.key.toLowerCase(),
-    );
-    if (!action) return;
+    if (event.currentTarget.value || event.ctrlKey || event.altKey || event.metaKey) return;
+    const highlighted = entries.find((entry) => entryId(entry) === selected);
+    if (path.length && ["Escape", "Backspace", "ArrowLeft"].includes(event.key)) {
+      // Before the window's Escape, which would close the menu.
+      event.stopPropagation();
+      event.preventDefault();
+      return up();
+    }
+    if (event.key === "ArrowRight" && highlighted?.kind === "folder") {
+      event.preventDefault();
+      return open(highlighted);
+    }
+    const entry = entries.find((candidate) => entryKey(candidate) === event.key.toLowerCase());
+    if (!entry) return;
     event.preventDefault();
-    start(action);
+    if (entry.kind === "folder") open(entry);
+    else start(entry.action);
   }
 
   const problems = error ? [...opened.problems, error] : opened.problems;
@@ -192,10 +268,28 @@ export function Popup() {
     );
   }
 
+  const filter = query.trim().toLowerCase();
+  const entries: Entry[] = filter
+    ? opened.actions
+        .filter((action) =>
+          [...folderPath(action), action.name].join(" ").toLowerCase().includes(filter),
+        )
+        .map((action) => ({ kind: "action", action }))
+    : entriesAt(menuTree(opened.actions), path);
+
   const agentUsed = query.trim() !== "" || opened.actions.some((action) => action.agent);
 
   return (
-    <Command key={openCount} data-menu data-picking={picked !== null} className="h-full">
+    <Command
+      key={openCount}
+      data-menu
+      data-picking={picked !== null}
+      data-navigated={navigated || undefined}
+      className="h-full"
+      shouldFilter={false}
+      value={selected}
+      onValueChange={setSelected}
+    >
       <div className="px-2 pt-1 pb-2">
         <p className="line-clamp-2 text-sm">{opened.text}</p>
         {opened.source === "clipboard" ? (
@@ -214,26 +308,70 @@ export function Popup() {
         autoFocus
         placeholder="Filter actions, or Space to ask anything"
         value={query}
-        onValueChange={setQuery}
+        onValueChange={(next) => change(() => setQuery(next))}
         onKeyDown={onKeyDown}
       />
-      <CommandList>
-        {opened.actions.map((action) => (
-          <CommandItem
-            key={action.id}
-            value={action.name}
-            data-picked={picked === action.id || undefined}
-            onSelect={() => start(action)}
-          >
-            <ActionIcon action={action} />
-            {action.name}
-            {action.key && (
-              <CommandShortcut>
-                <Kbd>{action.key.toUpperCase()}</Kbd>
-              </CommandShortcut>
-            )}
-          </CommandItem>
-        ))}
+      {path.length > 0 && !filter && (
+        <p className="flex items-center gap-1 px-2 pt-1.5 text-xs text-muted-foreground">
+          {path.map((name, index) => (
+            <Fragment key={name}>
+              {index > 0 && <ChevronRight aria-hidden className="size-3" />}
+              {index === path.length - 1 ? (
+                <span data-flight={PATH} className="font-medium text-foreground">
+                  {name}
+                </span>
+              ) : (
+                name
+              )}
+            </Fragment>
+          ))}
+          <span className="ml-auto">
+            <Kbd>←</Kbd> back
+          </span>
+        </p>
+      )}
+      <CommandList ref={list}>
+        {entries.map((entry) => {
+          const id = entryId(entry);
+          const key = entryKey(entry);
+          return (
+            <CommandItem
+              key={id}
+              value={id}
+              data-row={id}
+              data-picked={picked === id || undefined}
+              onSelect={() => (entry.kind === "folder" ? open(entry) : start(entry.action))}
+            >
+              {entry.kind === "folder" ? (
+                <>
+                  <FolderIcon aria-hidden />
+                  <span data-flight={id} className="flex-1 truncate">
+                    {entry.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{countActions(entry)}</span>
+                  <ChevronRight aria-hidden className="text-muted-foreground" />
+                </>
+              ) : (
+                <>
+                  <ActionIcon action={entry.action} />
+                  <span className="truncate">
+                    {filter && entry.action.folder && (
+                      <span className="text-muted-foreground">
+                        {folderPath(entry.action).join(" › ")} ›{" "}
+                      </span>
+                    )}
+                    {entry.action.name}
+                  </span>
+                </>
+              )}
+              {key && !filter && (
+                <CommandShortcut>
+                  <Kbd>{key.toUpperCase()}</Kbd>
+                </CommandShortcut>
+              )}
+            </CommandItem>
+          );
+        })}
         {query.trim() && (
           <CommandItem
             forceMount
@@ -268,3 +406,6 @@ export function Popup() {
     </Command>
   );
 }
+
+const entryKey = (entry: Entry) =>
+  entry.kind === "folder" ? entry.key : (entry.action.key?.toLowerCase() ?? "");
