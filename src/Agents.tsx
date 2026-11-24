@@ -6,6 +6,7 @@ import { bridge, harnessNames, type AgentSession, type Harness, type SessionMode
 import {
   agentMessages,
   applyRecord,
+  contextTokens,
   dialogOf,
   emptyTranscript,
   type PiDialog,
@@ -233,6 +234,7 @@ export function Agents() {
             onPromptChange={setPrompt}
             busy={transcript.busy}
             model={transcript.model}
+            contextTokens={contextTokens(transcript)}
             error={error ?? transcript.error}
             placeholder={`Ask ${harnessNames[current?.harness ?? harness]}`}
             emptyTitle={selected ? "Loading the session" : "New session"}
