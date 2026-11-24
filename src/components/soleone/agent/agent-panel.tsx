@@ -1,4 +1,4 @@
-import { memo, useId, useState, type ClipboardEvent, type Dispatch, type SetStateAction, type ReactNode } from "react"
+import { memo, useEffect, useId, useRef, useState, type ClipboardEvent, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ArrowUp, Brain, CornerDownLeft, Globe, Layers, LoaderCircle, Square, TextQuote, Wrench, X } from "lucide-react"
@@ -328,6 +328,16 @@ export function AgentPanel({
   const currentError = error || submissionError
   const promptId = useId()
   const working = busy || sending
+  const empty = messages.length === 0
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const wasEmpty = useRef(empty)
+
+  // A conversation emptying means a new session started, so the composer is where the user goes next.
+  // Not on mount, where it would steal focus from the page.
+  useEffect(() => {
+    if (empty && !wasEmpty.current) textarea.current?.focus()
+    wasEmpty.current = empty
+  }, [empty])
 
   // Answers to ask_user send without the composer's draft.
   async function send(text = prompt.trim(), sent = images) {
@@ -374,7 +384,7 @@ export function AgentPanel({
           <MessageScroller>
             <MessageScrollerViewport>
               <MessageScrollerContent>
-                {messages.length === 0 ? (
+                {empty ? (
                   <MessageScrollerItem messageId="empty">
                     <Empty>
                       <EmptyHeader>
@@ -465,6 +475,7 @@ export function AgentPanel({
             </InputGroupAddon>
           )}
           <InputGroupTextarea
+            ref={textarea}
             id={promptId}
             value={prompt}
             onChange={(event) => onPromptChange(event.target.value)}
