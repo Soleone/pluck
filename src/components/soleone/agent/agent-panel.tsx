@@ -1,6 +1,7 @@
-import { memo, useId, useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
-import ReactMarkdown from "react-markdown"
-import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench } from "lucide-react"
+import { memo, useId, useState, type ClipboardEvent, type Dispatch, type SetStateAction, type ReactNode } from "react"
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -45,11 +46,26 @@ export type AgentQuote = {
   href?: string
 }
 
+/** A pasted image, base64 without the data: prefix, as Pi's RPC and Claude's API take it. */
+export type AgentImage = { data: string; mimeType: string }
+
+/** An app item a reply links to, like a job, drawn as a chip that opens it. */
+export type AgentReference = {
+  /** The item's current name and state, shown on hover. */
+  title: string
+  icon?: ReactNode
+  onOpen: () => void
+}
+
+/** Finds the app item a link in a reply names, like `[Units CLI](factory:job/fab68001)`. Links it doesn't know stay links. */
+export type AgentReferences = (href: string) => AgentReference | undefined
+
 export type AgentMessage = {
   id: string
   role: "user" | "assistant"
   text: string
   quote?: AgentQuote
+  images?: AgentImage[]
   tools?: AgentTool[]
 }
 
@@ -65,8 +81,11 @@ type AgentPanelProps = {
   emptyDescription?: string
   /** Prompts offered while the conversation is empty; picking one fills the composer. */
   suggestions?: string[]
-  onSend: (text: string) => Promise<boolean>
+  onSend: (text: string, images: AgentImage[]) => Promise<boolean>
   onStop: () => void
+  /** Lets the user paste images into the composer; they reach onSend. */
+  acceptImages?: boolean
+  references?: AgentReferences
   renderTool?: (tool: AgentTool) => ReactNode
   /** The model and thinking level the conversation runs with, shown under the composer. */
   model?: { name: string; thinking: string }
@@ -208,18 +227,78 @@ function QuoteStep({ quote }: { quote: AgentQuote }) {
   )
 }
 
-/** Memoized: typing in the composer or host state changes would otherwise re-parse every reply. */
-const AssistantText = memo(function AssistantText({ text }: { text: string }) {
+const imageSrc = (image: AgentImage) => `data:${image.mimeType};base64,${image.data}`
+
+function readImage(file: File) {
+  return new Promise<AgentImage>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const url = reader.result as string
+      resolve({ mimeType: file.type, data: url.slice(url.indexOf(",") + 1) })
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function ReferenceChip({ reference, children }: { reference: AgentReference; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={reference.onOpen}
+            className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md border bg-muted px-1.5 align-bottom font-medium text-foreground hover:bg-accent [&_svg]:size-3.5 [&_svg]:shrink-0"
+          />
+        }
+      >
+        {reference.icon}<span className="truncate">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>{reference.title}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Memoized: typing in the composer would otherwise re-parse every reply. */
+const AssistantText = memo(function AssistantText({ text, references }: { text: string; references?: AgentReferences }) {
   return (
     <div className="flex min-w-0 flex-col gap-2 text-sm leading-relaxed wrap-break-word">
       <ReactMarkdown
         skipHtml
-        allowedElements={["p", "strong", "em", "a", "ul", "ol", "li", "code", "pre", "br", "blockquote"]}
+        remarkPlugins={[remarkGfm]}
+        allowedElements={[
+          "p", "strong", "em", "del", "a", "ul", "ol", "li", "code", "pre", "br", "blockquote", "hr",
+          "h1", "h2", "h3", "h4", "table", "thead", "tbody", "tr", "th", "td",
+        ]}
+        // Keeps app links like factory:job/… that the default would drop as an unknown protocol.
+        urlTransform={(url) => references?.(url) ? url : defaultUrlTransform(url)}
         components={{
-          a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">{children}</a>,
+          a: ({ children, href }) => {
+            const reference = href ? references?.(href) : undefined
+            if (reference) return <ReferenceChip reference={reference}>{children}</ReferenceChip>
+            if (!href) return <>{children}</>
+            return <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">{children}</a>
+          },
+          h1: ({ children }) => <h3 className="mt-2 text-base font-semibold">{children}</h3>,
+          h2: ({ children }) => <h3 className="mt-2 text-base font-semibold">{children}</h3>,
+          h3: ({ children }) => <h4 className="mt-1 font-semibold">{children}</h4>,
+          h4: ({ children }) => <h4 className="mt-1 font-semibold">{children}</h4>,
           ul: ({ children }) => <ul className="list-disc pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-5">{children}</ol>,
-          pre: ({ children }) => <pre className="overflow-auto whitespace-pre-wrap">{children}</pre>,
+          blockquote: ({ children }) => <blockquote className="border-l-2 pl-3 text-muted-foreground">{children}</blockquote>,
+          hr: () => <hr className="border-border" />,
+          code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{children}</code>,
+          pre: ({ children }) => <pre className="overflow-auto rounded-md bg-muted p-2 whitespace-pre-wrap [&_code]:p-0">{children}</pre>,
+          table: ({ children }) => (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full border-collapse text-xs">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+          tr: ({ children }) => <tr className="border-b last:border-b-0">{children}</tr>,
+          th: ({ children, style }) => <th style={style} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">{children}</th>,
+          td: ({ children, style }) => <td style={style} className="px-2 py-1.5 align-top">{children}</td>,
         }}
       >{text}</ReactMarkdown>
     </div>
@@ -229,28 +308,43 @@ const AssistantText = memo(function AssistantText({ text }: { text: string }) {
 /** Controlled UI only. The host owns transport, credentials, tools, and approval policy. */
 export function AgentPanel({
   messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model, modelPicker, suggestions,
+  acceptImages = false, references,
   placeholder = "Ask the agent…",
   emptyTitle = "What would you like to do?",
   emptyDescription = "Ask a question or describe a change. You stay in control of what gets applied.",
 }: AgentPanelProps) {
   const [sending, setSending] = useState(false)
   const [submissionError, setSubmissionError] = useState("")
+  const [images, setImages] = useState<AgentImage[]>([])
   const currentError = error || submissionError
   const promptId = useId()
   const working = busy || sending
 
   async function send() {
     const text = prompt.trim()
-    if (!text || working || disabled) return
+    if ((!text && images.length === 0) || working || disabled) return
     setSending(true)
     setSubmissionError("")
     try {
-      if (await onSend(text)) onPromptChange((current) => current.trim() === text ? "" : current)
+      if (await onSend(text, images)) {
+        onPromptChange((current) => current.trim() === text ? "" : current)
+        setImages((current) => current.filter((image) => !images.includes(image)))
+      }
     } catch (error) {
       setSubmissionError(error instanceof Error ? error.message : "Could not send. Please try again.")
     } finally {
       setSending(false)
     }
+  }
+
+  function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"))
+    if (!acceptImages || files.length === 0) return
+    event.preventDefault()
+    Promise.all(files.map(readImage)).then(
+      (pasted) => setImages((current) => [...current, ...pasted]),
+      () => setSubmissionError("Could not read the pasted image."),
+    )
   }
 
   return (
@@ -291,14 +385,19 @@ export function AgentPanel({
                         {turn.role === "user" ? (
                           <div className="flex min-w-0 flex-col items-end gap-2">
                             {turn.messages[0].quote && <QuoteStep quote={turn.messages[0].quote} />}
-                            <Bubble align="end" variant="muted">
-                              <BubbleContent className="whitespace-pre-wrap">{turn.messages[0].text}</BubbleContent>
-                            </Bubble>
+                            {turn.messages[0].images?.map((image, index) => (
+                              <img key={index} src={imageSrc(image)} alt="" className="max-h-48 max-w-full rounded-lg border object-contain" />
+                            ))}
+                            {turn.messages[0].text && (
+                              <Bubble align="end" variant="muted">
+                                <BubbleContent className="whitespace-pre-wrap">{turn.messages[0].text}</BubbleContent>
+                              </Bubble>
+                            )}
                           </div>
                         ) : (
                           <div className="flex min-w-0 flex-col gap-3">
                             {blocksOf(turn.messages, renderTool).map((block, index) =>
-                              block.type === "text" ? <AssistantText key={index} text={block.text} />
+                              block.type === "text" ? <AssistantText key={index} text={block.text} references={references} />
                               : block.type === "steps" ? (
                                 <Trace key={block.tools[0].id}>
                                   {block.tools.map((tool) => <ToolStep key={tool.id} tool={tool} />)}
@@ -326,10 +425,30 @@ export function AgentPanel({
       <form className="shrink-0" onSubmit={(event) => { event.preventDefault(); void send() }}>
         <label htmlFor={promptId} className="sr-only">Message the agent</label>
         <InputGroup>
+          {images.length > 0 && (
+            <InputGroupAddon align="block-start" className="flex-wrap">
+              {images.map((image, index) => (
+                <div key={index} className="relative">
+                  <img src={imageSrc(image)} alt={`Pasted image ${index + 1}`} className="size-14 rounded-md border object-cover" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-xs"
+                    className="absolute -top-1.5 -right-1.5 rounded-full"
+                    aria-label={`Remove pasted image ${index + 1}`}
+                    onClick={() => setImages((current) => current.filter((each) => each !== image))}
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ))}
+            </InputGroupAddon>
+          )}
           <InputGroupTextarea
             id={promptId}
             value={prompt}
             onChange={(event) => onPromptChange(event.target.value)}
+            onPaste={paste}
             className="max-h-40"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -349,7 +468,7 @@ export function AgentPanel({
               </InputGroupButton>
             ) : (
               // A disabled empty Send button would make InputGroup dim the editable textarea too.
-              <InputGroupButton type="submit" size="sm" variant={prompt.trim() ? "default" : "secondary"} disabled={disabled} aria-disabled={disabled || !prompt.trim()}>
+              <InputGroupButton type="submit" size="sm" variant={prompt.trim() || images.length ? "default" : "secondary"} disabled={disabled} aria-disabled={disabled || (!prompt.trim() && !images.length)}>
                 <ArrowUp data-icon="inline-start" />Send
               </InputGroupButton>
             )}
