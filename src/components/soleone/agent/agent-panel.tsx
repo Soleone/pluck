@@ -4,11 +4,13 @@ import { ArrowUp, Brain, Globe, Square, TextQuote, Wrench } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Button } from "@/components/ui/button"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import {
   InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { Message, MessageContent } from "@/components/ui/message"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/soleone/tooltip/tooltip"
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
@@ -61,11 +63,15 @@ type AgentPanelProps = {
   placeholder?: string
   emptyTitle?: string
   emptyDescription?: string
+  /** Prompts offered while the conversation is empty; picking one fills the composer. */
+  suggestions?: string[]
   onSend: (text: string) => Promise<boolean>
   onStop: () => void
   renderTool?: (tool: AgentTool) => ReactNode
   /** The model and thinking level the conversation runs with, shown under the composer. */
   model?: { name: string; thinking: string }
+  /** Opens from the model badge, for example AgentModelFields. */
+  modelPicker?: ReactNode
 }
 
 type AgentTurn = { id: string; role: AgentMessage["role"]; messages: AgentMessage[] }
@@ -222,7 +228,7 @@ const AssistantText = memo(function AssistantText({ text }: { text: string }) {
 
 /** Controlled UI only. The host owns transport, credentials, tools, and approval policy. */
 export function AgentPanel({
-  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model,
+  messages, prompt, onPromptChange, busy, disabled = false, error, onSend, onStop, renderTool, model, modelPicker, suggestions,
   placeholder = "Ask the agent…",
   emptyTitle = "What would you like to do?",
   emptyDescription = "Ask a question or describe a change. You stay in control of what gets applied.",
@@ -261,6 +267,21 @@ export function AgentPanel({
                         <EmptyTitle>{emptyTitle}</EmptyTitle>
                         <EmptyDescription>{emptyDescription}</EmptyDescription>
                       </EmptyHeader>
+                      {suggestions && suggestions.length > 0 && (
+                        <EmptyContent className="items-stretch">
+                          {suggestions.map((suggestion) => (
+                            <Button
+                              key={suggestion}
+                              variant="outline"
+                              className="h-auto justify-start py-2 text-left whitespace-normal"
+                              disabled={disabled}
+                              onClick={() => onPromptChange(suggestion)}
+                            >
+                              {suggestion}
+                            </Button>
+                          ))}
+                        </EmptyContent>
+                      )}
                     </Empty>
                   </MessageScrollerItem>
                 ) : turnsOf(messages).map((turn) => (
@@ -339,7 +360,14 @@ export function AgentPanel({
         <p role="status" className="truncate text-xs text-muted-foreground">
           {working ? "Agent working. You can stop it at any time." : "Enter to send. Shift+Enter for a new line."}
         </p>
-        {model && (
+        {modelPicker ? (
+          <Popover>
+            <PopoverTrigger render={<Button variant="secondary" size="xs" aria-label="Change model" />}>
+              <Brain data-icon="inline-start" />{model ? `${model.name} · ${model.thinking}` : "Model"}
+            </PopoverTrigger>
+            <PopoverContent side="top" align="end" className="w-80">{modelPicker}</PopoverContent>
+          </Popover>
+        ) : model && (
           <Tooltip>
             <TooltipTrigger render={<Badge variant="secondary" />}>
               <Brain />{model.name} · {model.thinking}
