@@ -1,4 +1,3 @@
-// Types only, so a server can import this file without the UI.
 import type { AgentSource, AgentTool } from "./agent-panel"
 
 type Status = AgentTool["status"]

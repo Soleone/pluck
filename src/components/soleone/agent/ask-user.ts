@@ -1,6 +1,3 @@
-// No UI imports, so a server can register the tool from this file.
-
-/** What the agent asks with `ask_user`: the call's arguments. */
 export type AgentQuestion = {
   question?: string
   /** One click answers. The first is the default. */
