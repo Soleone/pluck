@@ -1,5 +1,19 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronRight, CircleCheck, Folder as FolderIcon, Sparkles } from "lucide-react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  Folder as FolderIcon,
+  Sparkles,
+} from "lucide-react";
 import { ActionIcon } from "@/ActionIcon";
 import { ago } from "@/agent/ago";
 import { bridge, type Action, type Opened } from "@/bridge";
@@ -296,10 +310,7 @@ export function Popup() {
           <p className="text-xs text-muted-foreground">From the clipboard</p>
         ) : (
           opened.app && (
-            <p className="truncate text-xs text-muted-foreground">
-              {opened.app}
-              {opened.title && ` · ${opened.title}`}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{sourceName(opened)}</p>
           )
         )}
       </div>
@@ -312,7 +323,14 @@ export function Popup() {
         onKeyDown={onKeyDown}
       />
       {path.length > 0 && !filter && (
-        <p className="flex items-center gap-1 px-2 pt-1.5 text-xs text-muted-foreground">
+        <button
+          type="button"
+          title="Back (←)"
+          onMouseDown={keepFocus}
+          onClick={up}
+          className="flex items-center gap-1 self-start rounded-md px-1 pt-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft aria-hidden className="size-3.5" />
           {path.map((name, index) => (
             <Fragment key={name}>
               {index > 0 && <ChevronRight aria-hidden className="size-3" />}
@@ -325,10 +343,7 @@ export function Popup() {
               )}
             </Fragment>
           ))}
-          <span className="ml-auto">
-            <Kbd>←</Kbd> back
-          </span>
-        </p>
+        </button>
       )}
       <CommandList ref={list}>
         {entries.map((entry) => {
@@ -389,13 +404,22 @@ export function Popup() {
       {agentUsed && lastSession && (
         <p className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1 truncate">
-            {continuing ? `Continues ${lastSession.title}` : "Agents start a new session"}
+            {continuing && `Continues ${lastSession.title}`}
           </span>
           {continuing && lastAge && <span className="shrink-0">{lastAge}</span>}
-          <span className="shrink-0">
+          <button
+            type="button"
+            onMouseDown={keepFocus}
+            onClick={() => setContinueLast(!continueLast)}
+            className="shrink-0 hover:text-foreground"
+          >
             <Kbd>Tab</Kbd>{" "}
-            {continuing ? "new session" : `continue last${lastAge ? ` (${lastAge})` : ""}`}
-          </span>
+            {continuing
+              ? "new session"
+              : lastAge
+                ? `resume session from ${lastAge}`
+                : "resume last session"}
+          </button>
         </p>
       )}
       {problems.map((problem) => (
@@ -409,3 +433,10 @@ export function Popup() {
 
 const entryKey = (entry: Entry) =>
   entry.kind === "folder" ? entry.key : (entry.action.key?.toLowerCase() ?? "");
+
+/** Clicking a hint leaves focus in the filter, where the menu's keys work. */
+const keepFocus = (event: MouseEvent) => event.preventDefault();
+
+/** The app and its window title, or the title alone when it already names the app, like "Factory - Brave". */
+const sourceName = ({ app, title }: Opened) =>
+  !title ? app : title.toLowerCase().includes(app.toLowerCase()) ? title : `${app} · ${title}`;
