@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.4](https://github.com/Soleone/pluck/compare/v0.3.3...v0.3.4) (2026-11-25)
+
+### Features
+
+* **agent:** Claude Code and Codex sessions report their context size ([2054df2](https://github.com/Soleone/pluck/commit/2054df2d0c047e1099178b70e4ca0b863f9335ae))
+* **agent:** every tool step shows its full input ([3bfa179](https://github.com/Soleone/pluck/commit/3bfa179b61d3fd5f231589e22e6558fd2c269e07))
+* **agent:** focus the composer when a new session starts ([aa9f3ff](https://github.com/Soleone/pluck/commit/aa9f3ff8dbb691c5f85ba643a1a9aecc597f42a3))
+* **agent:** show a tool step's full input when it opens ([da21c40](https://github.com/Soleone/pluck/commit/da21c4060d6747e5e89ea7fa353655b5552b3588))
+* **agent:** show the session's context size under the composer ([fefea41](https://github.com/Soleone/pluck/commit/fefea41274ea77218b86e8d88f273f75818af894))
+* **menu:** folders that drill in, organized from Home ([46be6e6](https://github.com/Soleone/pluck/commit/46be6e63272580a98f3eaf4382a7ee50592465ee))
+
+### Bug Fixes
+
+* **agent:** add button-group and match the registry install of the agent component ([a6d0f04](https://github.com/Soleone/pluck/commit/a6d0f040514f6a8ba63ea4ff2507266a3425d9b5))
+
 ## [0.3.3](https://github.com/Soleone/pluck/compare/v0.3.2...v0.3.3) (2026-11-23)
 
 ### Bug Fixes
