@@ -517,7 +517,7 @@ function ActionDialog({
             (event.ctrlKey || event.metaKey) &&
             event.currentTarget.requestSubmit()
           }
-          className="flex flex-col gap-4"
+          className="flex min-w-0 flex-col gap-4"
         >
           <DialogHeader>
             <DialogTitle>{action ? `Edit ${action.name}` : "New action"}</DialogTitle>
@@ -586,8 +586,9 @@ function ActionDialog({
               {chosenFolder ? ` in ${chosenFolder.split("/").join(" › ")}` : ""}.
             </FieldError>
           )}
-          {/* Both kinds share one grid cell, so switching keeps the dialog's size. */}
-          <div className="grid">
+          {/* Both kinds share one grid cell, so switching keeps the dialog's size. The column
+              can't grow past the dialog, since the prompt box sizes itself to its text. */}
+          <div className="grid grid-cols-1">
             <KindPane shown={kind === "prompt"}>
               <Field className="flex-1" data-invalid={checked && !prompt.trim()}>
                 <FieldLabel htmlFor="action-prompt">Prompt</FieldLabel>
