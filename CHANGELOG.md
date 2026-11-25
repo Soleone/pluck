@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.5](https://github.com/Soleone/pluck/compare/v0.3.4...v0.3.5) (2026-11-25)
+
+### Features
+
+* **menu:** clickable back path and session hint, no doubled app name ([283c74d](https://github.com/Soleone/pluck/commit/283c74dcd67870e43f87770ea558b3f79bc36b1a))
+
+### Bug Fixes
+
+* **actions:** keep the action dialog's content inside its border ([f08a320](https://github.com/Soleone/pluck/commit/f08a3203ffbcfd949f8e0bd3c9a2a399aecf146a))
+
 ## [0.3.4](https://github.com/Soleone/pluck/compare/v0.3.3...v0.3.4) (2026-11-25)
 
 ### Features
